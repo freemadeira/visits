@@ -3,7 +3,7 @@
 A sideloaded Android app (Capacitor) for merchant field visits, synced with **FreeHub**,
 FREE Madeira's Nostr CRM. It reads the **Merchants** table from the team relay, shows
 each business's **visit heat** (days since the team's last visit), and publishes visits
-and new merchants as FreeHub events. Spec: `../spec-field-app.md`.
+and new merchants as FreeHub events. 
 
 ## How it fits FreeHub
 
@@ -24,8 +24,8 @@ and new merchants as FreeHub events. Spec: `../spec-field-app.md`.
 pnpm install
 pnpm dev           # browser version (NIP-07 / NIP-46)
 pnpm apk           # build the APK and install it on the phone (USB or wireless adb)
-pnpm sync          # pull work photos/videos (Pictures/FREE Madeira/) to ../field-sync/media
-pnpm freehub-csv   # one-time: merchant_map.csv → ../field-sync/freehub-merchants.csv for FreeHub's import
+pnpm sync          # pull work photos/videos (Pictures/FREE Madeira/) to data/field-sync/media
+pnpm freehub-csv   # one-time: data/merchant_map.csv (+ FM24 sheet) → data/field-sync/freehub-merchants.csv for FreeHub's import
 ```
 
 ## Media
@@ -33,3 +33,9 @@ pnpm freehub-csv   # one-time: merchant_map.csv → ../field-sync/freehub-mercha
 Photos and videos taken from a visit go to `Pictures/FREE Madeira/<date>_<merchant>/` on
 the phone, their own album separate from the camera roll. FreeHub has no attachments yet,
 so they come to the PC with `pnpm sync`.
+
+## Local data
+
+Real merchant data is never in this repo. The scripts read it from `data/` (gitignored), a
+folder or a link to one, holding `merchant_map.csv`, the FM24 spreadsheet and
+`field-sync/`.

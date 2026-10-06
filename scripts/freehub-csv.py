@@ -13,10 +13,10 @@ Mapping (settled with Zapa 2026-10-06):
   FM24: Contact Name → Contact person · Contact Email (else Business Email) → Email
         Contact Phone (else Business Phone) → Phone · Website · Address → Location
         PoS → Payment setup · plus extra columns with no FreeHub field yet (Hours, …)
-  field-sync/visits.csv (visits logged before FreeHub sync) → Field Notes, one
+  data/field-sync/visits.csv (visits logged before FreeHub sync) → Field Notes, one
   "YYYY-MM-DD: note" line per visit, matched by OSM link or name
 
-Output: ../field-sync/freehub-merchants.csv (gitignored — real personal data), and
+Output: data/field-sync/freehub-merchants.csv (gitignored — real personal data), and
 public/unlisted.json: the FM24 businesses that aren't in merchant_map.csv, by name only
 (no contacts), which the app shows as "not in FreeHub" (gitignored, bundled into the APK).
 Prints counts only, never contact details.
@@ -33,10 +33,13 @@ from pathlib import Path
 import openpyxl
 
 ROOT = Path(__file__).resolve().parent.parent
-MAP = ROOT.parent / "merchant_map.csv"
-FM24 = ROOT.parent / "FM24 _ Merchants List.xlsx"
-OUT = ROOT.parent / "field-sync" / "freehub-merchants.csv"
-VISITS = ROOT.parent / "field-sync" / "visits.csv"  # notes from the pre-FreeHub app (pnpm sync)
+# Real merchant data never lives in this repo: `data/` is a gitignored folder (or a link to
+# one) holding merchant_map.csv, the FM24 spreadsheet and field-sync/.
+DATA = ROOT / "data"
+MAP = DATA / "merchant_map.csv"
+FM24 = DATA / "FM24 _ Merchants List.xlsx"
+OUT = DATA / "field-sync" / "freehub-merchants.csv"
+VISITS = DATA / "field-sync" / "visits.csv"  # notes from the pre-FreeHub app (pnpm sync)
 
 
 def norm(s):
@@ -128,7 +131,7 @@ EXTRA = [  # FM24 columns with no FreeHub field yet: add a field with this name 
 # Corrections from Zapa's own field visits, newer than both source files. Kept outside the
 # code (field-sync/ is gitignored — they're field notes about real businesses):
 #   {"<Business name>": {"<column>": "<value>", …}, …}
-OVERRIDES_FILE = ROOT.parent / "field-sync" / "overrides.json"
+OVERRIDES_FILE = DATA / "field-sync" / "overrides.json"
 OVERRIDES = json.loads(OVERRIDES_FILE.read_text(encoding="utf-8")) if OVERRIDES_FILE.exists() else {}
 
 COLUMNS = ["Business", "Area", "Latitude", "Longitude", "OSM link", "Journey", "On BTC Map",

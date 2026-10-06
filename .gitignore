@@ -31,3 +31,7 @@ android/build/
 
 # FM24 businesses not in FreeHub, names only — bundled into the APK, never committed
 public/unlisted.json
+
+# Real merchant data (merchant_map.csv, FM24 spreadsheet, field-sync/) — a local folder or link, never committed
+data
+data/
