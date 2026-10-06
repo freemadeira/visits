@@ -1,0 +1,33 @@
+# Personal tracking — not committed
+STATUS.md
+
+# Env / secrets — .keys is a throwaway dev deploy key, never committed
+.keys
+.env
+.env.*
+
+# Real data inputs and their sealed output — never committed
+whitelist.txt
+public/sealed.json
+
+# nsyte / dumclaw local state
+.nsite/
+index.db
+.dumclaw/
+
+node_modules
+dist
+*.local
+*.log
+.DS_Store
+
+# Android: web assets copied in by `cap sync` (include sealed.json) and build output
+android/app/src/main/assets/public/
+android/app/src/main/assets/capacitor.config.json
+android/app/src/main/assets/capacitor.plugins.json
+android/.gradle/
+android/app/build/
+android/build/
+
+# FM24 businesses not in FreeHub, names only — bundled into the APK, never committed
+public/unlisted.json

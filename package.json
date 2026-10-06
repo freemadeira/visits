@@ -1,0 +1,36 @@
+{
+  "name": "madfree-visit-tracker",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host",
+    "build": "tsc -b && vite build",
+    "lint": "oxlint",
+    "preview": "vite preview --host",
+    "apk": "node scripts/android.mjs",
+    "sync": "node scripts/sync.mjs",
+    "freehub-csv": "python3 scripts/freehub-csv.py"
+  },
+  "dependencies": {
+    "@capacitor/android": "^7.6.9",
+    "@capacitor/core": "^7.6.9",
+    "applesauce-relay": "^6.2.1",
+    "applesauce-signers": "^6.2.3",
+    "nostr-tools": "^2.25.2",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8",
+    "rxjs": "^7.8.2"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^7.6.9",
+    "@types/node": "^24.13.3",
+    "@types/react": "^19.2.18",
+    "@types/react-dom": "^19.2.7",
+    "@vitejs/plugin-react": "^6.1.1",
+    "oxlint": "^1.81.0",
+    "typescript": "~6.0.2",
+    "vite": "^8.3.0",
+    "ws": "^8.22.0"
+  }
+}
