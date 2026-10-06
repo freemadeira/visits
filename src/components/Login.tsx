@@ -52,7 +52,7 @@ export default function Login({ onSigner, error }: Props) {
   return (
     <main className="center">
       <div className="card">
-        <h1>Visit tracker</h1>
+        <h1>Visitas</h1>
         <p className="muted">Log in with a whitelisted npub.</p>
 
         {androidSigner && (

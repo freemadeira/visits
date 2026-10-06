@@ -1,4 +1,4 @@
-export const APP_NAME = 'FREE Madeira visit tracker';
+export const APP_NAME = 'Visitas';
 
 // FreeHub's team relay: Haven's *private* relay (NIP-42 AUTH + whitelist). The relay
 // root is Haven's public outbox relay — not the one FreeHub uses.

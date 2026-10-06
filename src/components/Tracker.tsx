@@ -170,7 +170,7 @@ export default function Tracker({ pubkey, data, access, pending, loadedAt, onRef
   return (
     <main className="tracker">
       <header className="top">
-        <h1>Visit tracker</h1>
+        <h1>Visitas</h1>
         <div className="who">
           <span className="muted" title={npubEncode(pubkey)}>{npubEncode(pubkey).slice(0, 12)}…</span>
           <button className="ghost small" onClick={onLogout}>Log out</button>
