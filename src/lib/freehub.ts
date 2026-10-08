@@ -164,9 +164,7 @@ export interface Merchant {
 /** The Merchants table's fields the app reads/writes, found by name (ids are random per table). */
 export interface MerchantFields {
   area?: Field;
-  lat?: Field;
-  lon?: Field;
-  /** FreeHub's Location field (type `location`), the one its map pins. */
+  /** FreeHub's Location field (type `location`): the coordinates, and what its map pins. */
   location?: Field;
   osm?: Field;
   journey?: Field;
@@ -180,8 +178,6 @@ export function merchantFields(table: Table): MerchantFields {
     table.fields.find((f) => norm(f.name) === norm(name) && (!type || f.type === type));
   return {
     area: by('Area'),
-    lat: by('Latitude'),
-    lon: by('Longitude'),
     location: table.fields.find((f) => f.type === 'location'),
     osm: by('OSM link'),
     journey: table.fields.find((f) => f.type === 'stage'),
@@ -193,10 +189,6 @@ export function merchantFields(table: Table): MerchantFields {
 
 const optionLabel = (field: Field | undefined, id: string | undefined) =>
   (field && id && field.options.find((o) => o.id === id)?.label) || '';
-const num = (v: string | undefined) => {
-  const n = v === undefined || v === '' ? NaN : Number(v);
-  return Number.isFinite(n) ? n : null;
-};
 
 // FreeHub's Location field (freehub src/lib/location.ts): "lat,lng" in decimal degrees,
 // 6 decimals. A value that doesn't parse, or isn't a real place, is no location.
@@ -219,17 +211,14 @@ export function locationValue(lat: number, lon: number): string {
 }
 
 /**
- * Writes a position into a record's values: the Location field in FreeHub's format, and
- * each of Latitude / Longitude that the table has. Nothing for a position that isn't real.
- * Returns whether anything was written.
+ * Writes a position into a record's Location field, in FreeHub's format. Nothing for a
+ * position that isn't real, or a table without a Location field. Returns whether it wrote.
  */
 function writeLocation(fields: MerchantFields, values: Record<string, string[]>, lat: number | null, lon: number | null): boolean {
   const p = validLocation(lat, lon);
-  if (!p) return false;
-  if (fields.location) values[fields.location.id] = [locationValue(p.lat, p.lon)];
-  if (fields.lat) values[fields.lat.id] = [String(p.lat)];
-  if (fields.lon) values[fields.lon.id] = [String(p.lon)];
-  return !!(fields.location || fields.lat || fields.lon);
+  if (!p || !fields.location) return false;
+  values[fields.location.id] = [locationValue(p.lat, p.lon)];
+  return true;
 }
 
 export interface FreeHubData {
@@ -258,14 +247,13 @@ export function resolve(events: NostrEvent[], me: string): Resolution {
 
   // The Merchants table is recognised by its content, not its slug: FreeHub derives a
   // pack table's slug from the name typed at creation (+ "-2"… when taken), so a
-  // recreated or renamed table gets a different one. Prefer a table with a Journey stage
-  // and Latitude/Longitude fields, or a merchant-named one with a Journey stage and a
-  // Location field (a stage + Location alone could be another CRM table, e.g. Deals);
-  // else a slug starting with "merchant". Newest wins.
+  // recreated or renamed table gets a different one. Prefer a merchant-named table with a
+  // Journey stage and a Location field (a stage + Location alone could be another CRM
+  // table, e.g. Deals); else any slug starting with "merchant". Newest wins.
   const score = (t: Table) => {
     const f = merchantFields(t);
     const merchantNamed = norm(t.slug || t.title).startsWith(MERCHANTS_SLUG.replace(/s$/, ''));
-    if (f.journey && ((f.lat && f.lon) || (f.location && merchantNamed))) return 2;
+    if (f.journey && f.location && merchantNamed) return 2;
     return merchantNamed ? 1 : 0;
   };
   let best: { project: Project; table: Table; score: number } | null = null;
@@ -295,10 +283,7 @@ export function resolve(events: NostrEvent[], me: string): Resolution {
     .map(parseRecord)
     .sort((a, b) => a.rank - b.rank || a.createdAt - b.createdAt);
 
-  // Location first (it's what FreeHub's map shows), else Latitude/Longitude.
-  const coords = (r: CrmRecord) =>
-    readLocation(r.values[fields.location?.id ?? '']?.[0]) ??
-    validLocation(num(r.values[fields.lat?.id ?? '']?.[0]), num(r.values[fields.lon?.id ?? '']?.[0]));
+  const coords = (r: CrmRecord) => readLocation(r.values[fields.location?.id ?? '']?.[0]);
   const merchants = records.map((r): Merchant => ({
     id: r.id,
     author: r.author,
@@ -423,8 +408,7 @@ export interface RecordChange {
 /**
  * The record republished whole with the changes applied (FreeHub `updateRecord`): a stage
  * move is appended when Journey changes, and "Accepting bitcoin" also fills Accepting
- * since if empty. A position for a merchant that had none goes into Location and
- * Latitude / Longitude. Returns null when nothing would change (or the table lacks the
+ * since if empty. A position for a merchant that had none goes into Location. Returns null when nothing would change (or the table lacks the
  * field / option), so no event is written for a no-op.
  */
 export function recordChangeTemplate(data: FreeHubData, me: string, m: Merchant, change: RecordChange): EventTemplate | null {
@@ -459,32 +443,6 @@ export function recordChangeTemplate(data: FreeHubData, me: string, m: Merchant,
   if (change.location && writeLocation(fields, values, change.location.lat, change.location.lon)) changed = true;
   if (!changed) return null;
   return { kind: CRM_RECORD_KIND, created_at: t, content: '', tags: recordTags(table, project, { ...record, values, moves }) };
-}
-
-/**
- * TEMPORARY (2026-10-08, remove once FreeHub's Location is filled): every record with
- * an empty Location but valid Latitude/Longitude, republished whole with Location set
- * from them, so existing merchants show on FreeHub's map. Records that already have a
- * Location are never touched.
- */
-export function locationBackfillTemplates(data: FreeHubData): EventTemplate[] {
-  const { fields, table, project } = data;
-  if (!fields.location || !fields.lat || !fields.lon) return [];
-  const start = now();
-  const templates: EventTemplate[] = [];
-  for (const record of data.records.values()) {
-    if (readLocation(record.values[fields.location.id]?.[0])) continue;
-    const p = validLocation(num(record.values[fields.lat.id]?.[0]), num(record.values[fields.lon.id]?.[0]));
-    if (!p) continue;
-    const values = { ...record.values, [fields.location.id]: [locationValue(p.lat, p.lon)] };
-    templates.push({
-      kind: CRM_RECORD_KIND,
-      created_at: Math.max(start, record.updatedAt + 1),
-      content: '',
-      tags: recordTags(table, project, { ...record, values }),
-    });
-  }
-  return templates;
 }
 
 const localIsoDate = (unix: number) => {

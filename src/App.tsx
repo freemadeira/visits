@@ -88,7 +88,7 @@ function Main({ signer, pubkey, onLogout }: { signer: Signer; pubkey: string; on
       <>
         <h1>No Merchants table yet</h1>
         <p className="muted">
-          Create it in FreeHub (New table → Merchant adoption), add the Area, Latitude, Longitude and OSM link fields,
+          Create it in FreeHub (New table → Merchant adoption), add the Area, Location and OSM link fields,
           and import the merchants CSV. Then tap Retry.
         </p>
       </>

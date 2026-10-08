@@ -6,12 +6,12 @@ address, payment setup and the rest, joined by business name (exact, then close 
 FreeHub matches columns to fields by name and creates missing select options itself.
 
 Mapping (settled with Zapa 2026-10-06):
-  name → Business · area → Area · lat/lon → Latitude/Longitude · osm_link → OSM link
+  name → Business · area → Area · lat/lon → Location ("lat,lon", 6 decimals) · osm_link → OSM link
   status → Journey: dropped / not-accepting → Not interested; field-added → Lead;
            anything else → Accepting bitcoin
   On BTC Map: btcmap-only / fm24+btcmap, or FM24 "BTCmaps" = Yes
   FM24: Contact Name → Contact person · Contact Email (else Business Email) → Email
-        Contact Phone (else Business Phone) → Phone · Website · Address → Location
+        Contact Phone (else Business Phone) → Phone · Website · Address → Address
         PoS → Payment setup · plus extra columns with no FreeHub field yet (Hours, …)
   data/field-sync/visits.csv (visits logged before FreeHub sync) → Field Notes, one
   "YYYY-MM-DD: note" line per visit, matched by OSM link or name
@@ -134,8 +134,16 @@ EXTRA = [  # FM24 columns with no FreeHub field yet: add a field with this name 
 OVERRIDES_FILE = DATA / "field-sync" / "overrides.json"
 OVERRIDES = json.loads(OVERRIDES_FILE.read_text(encoding="utf-8")) if OVERRIDES_FILE.exists() else {}
 
-COLUMNS = ["Business", "Area", "Latitude", "Longitude", "OSM link", "Journey", "On BTC Map",
-           "Contact person", "Email", "Phone", "Website", "Location", "Payment setup", "Field Notes", "Needs follow-up"] + [n for n, _ in EXTRA]
+def location(lat, lon):
+    """FreeHub's Location value: "lat,lon" to 6 decimals, or empty if either is missing."""
+    try:
+        return f"{float(lat):.6f},{float(lon):.6f}"
+    except ValueError:
+        return ""
+
+
+COLUMNS = ["Business", "Area", "Location", "OSM link", "Journey", "On BTC Map",
+           "Contact person", "Email", "Phone", "Website", "Address", "Payment setup", "Field Notes", "Needs follow-up"] + [n for n, _ in EXTRA]
 
 # Field notes from the pre-FreeHub app, keyed the way that app keyed visits (OSM link, else name).
 notes = {}
@@ -156,8 +164,7 @@ for m in merchants:
     row = {
         "Business": m["name"].strip(),
         "Area": m["area"].strip(),
-        "Latitude": m["lat"].strip(),
-        "Longitude": m["lon"].strip(),
+        "Location": location(m["lat"], m["lon"]),
         "OSM link": m["osm_link"].strip(),
         "Journey": journey(status),
         "On BTC Map": "yes" if status in ("btcmap-only", "fm24+btcmap") or f("BTCmaps").lower() == "yes" else "",
@@ -165,7 +172,7 @@ for m in merchants:
         "Email": f("Contact Email") or f("Business Email"),
         "Phone": f("Contact Phone") or f("Business Phone"),
         "Website": f("Website"),
-        "Location": f("Address"),
+        "Address": f("Address"),
         "Payment setup": "" if pos.lower() in ("", "dropped", "n/a") else pos,
         "Needs follow-up": "",
         "Field Notes": "\n".join(notes.pop(m["osm_link"].strip() or m["name"].strip(), [])),

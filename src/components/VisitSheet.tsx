@@ -10,7 +10,7 @@ interface Props {
   /** Publishes the visit, then any Journey / follow-up / location change, to FreeHub. */
   onSave: (note: string, change: RecordChange) => Promise<void>;
   onClose: () => void;
-  /** The Merchants table has somewhere to keep a position (Location, or Latitude + Longitude). */
+  /** The Merchants table has a Location field to keep a position in. */
   canSaveLocation: boolean;
 }
 

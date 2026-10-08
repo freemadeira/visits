@@ -8,7 +8,6 @@ import {
   type FreeHubData,
   loadUnlisted,
   merchantFromTemplate,
-  locationBackfillTemplates,
   newMerchantTemplate,
   recordChangeTemplate,
   unlistedMerchants,
@@ -168,31 +167,7 @@ export default function Tracker({ pubkey, data, access, pending, loadedAt, onRef
           : `Offline${pending ? ` · ${pending} waiting to send` : ''}`;
   const urgentCount = Object.keys(state.urgent).length;
 
-  // TEMPORARY (2026-10-08): one-off fill of FreeHub's Location from Latitude/Longitude.
-  // Remove this, the button below and locationBackfillTemplates once it has run.
-  const backfill = useMemo(() => locationBackfillTemplates(data), [data]);
-  const [filling, setFilling] = useState<{ done: number; total: number; error?: string } | null>(null);
-  async function fillLocations() {
-    const templates = backfill;
-    if (
-      !confirm(
-        `Copy Latitude/Longitude into FreeHub's Location for ${templates.length} merchants, so they show on the map?\n\n` +
-          'Each one is a signed record update. Merchants that already have a Location are skipped. ' +
-          'If anyone edited merchants in FreeHub in the last few minutes, cancel and tap Refresh first.',
-      )
-    )
-      return;
-    setFilling({ done: 0, total: templates.length });
-    for (const [i, t] of templates.entries()) {
-      try {
-        await publish(t);
-      } catch (e) {
-        setFilling({ done: i, total: templates.length, error: e instanceof Error ? e.message : String(e) });
-        return;
-      }
-      setFilling({ done: i + 1, total: templates.length });
-    }
-  }
+
 
   return (
     <main className="tracker">
@@ -211,25 +186,6 @@ export default function Tracker({ pubkey, data, access, pending, loadedAt, onRef
         </span>
         <button className="small" onClick={onRefresh}>Refresh</button>
       </div>
-
-      {(filling || (backfill.length > 0 && !pending && access === 'online')) && (
-        <div className="sync pending">
-          <span className="small">
-            {filling
-              ? filling.error
-                ? `Stopped at ${filling.done}/${filling.total}: ${filling.error}`
-                : `Putting merchants on the map: ${filling.done}/${filling.total}`
-              : `${backfill.length} merchants have coordinates but no FreeHub Location`}
-          </span>
-          {!filling || filling.error ? (
-            <button className="small" disabled={!!pending} onClick={fillLocations}>
-              🗺️ Put {backfill.length} on the map (temporary)
-            </button>
-          ) : filling.done === filling.total ? (
-            <button className="small" onClick={() => setFilling(null)}>Done</button>
-          ) : null}
-        </div>
-      )}
 
       <div className="controls">
         <input type="search" placeholder="Filter by name" value={filter} onChange={(e) => setFilter(e.target.value)} />
@@ -395,7 +351,7 @@ export default function Tracker({ pubkey, data, access, pending, loadedAt, onRef
             setOpen(null);
           }}
           onClose={() => setOpen(null)}
-          canSaveLocation={!!(data.fields.location || (data.fields.lat && data.fields.lon))}
+          canSaveLocation={!!data.fields.location}
         />
       )}
       {adding && (
