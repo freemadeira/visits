@@ -461,6 +461,32 @@ export function recordChangeTemplate(data: FreeHubData, me: string, m: Merchant,
   return { kind: CRM_RECORD_KIND, created_at: t, content: '', tags: recordTags(table, project, { ...record, values, moves }) };
 }
 
+/**
+ * TEMPORARY (2026-10-08, remove once FreeHub's Location is filled): every record with
+ * an empty Location but valid Latitude/Longitude, republished whole with Location set
+ * from them, so existing merchants show on FreeHub's map. Records that already have a
+ * Location are never touched.
+ */
+export function locationBackfillTemplates(data: FreeHubData): EventTemplate[] {
+  const { fields, table, project } = data;
+  if (!fields.location || !fields.lat || !fields.lon) return [];
+  const start = now();
+  const templates: EventTemplate[] = [];
+  for (const record of data.records.values()) {
+    if (readLocation(record.values[fields.location.id]?.[0])) continue;
+    const p = validLocation(num(record.values[fields.lat.id]?.[0]), num(record.values[fields.lon.id]?.[0]));
+    if (!p) continue;
+    const values = { ...record.values, [fields.location.id]: [locationValue(p.lat, p.lon)] };
+    templates.push({
+      kind: CRM_RECORD_KIND,
+      created_at: Math.max(start, record.updatedAt + 1),
+      content: '',
+      tags: recordTags(table, project, { ...record, values }),
+    });
+  }
+  return templates;
+}
+
 const localIsoDate = (unix: number) => {
   const d = new Date(unix * 1000);
   const p = (n: number) => String(n).padStart(2, '0');
