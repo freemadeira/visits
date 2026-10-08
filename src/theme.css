@@ -80,9 +80,6 @@ button.checkin.done { border-color: #66bb6a; color: #66bb6a; }
 .bar { position: fixed; left: 0; right: 0; bottom: 0; display: flex; gap: 0.75rem; align-items: center; justify-content: flex-end; flex-wrap: wrap; padding: 0.7rem 16px; background: var(--surface); border-top: 1px solid var(--rule); z-index: 2; }
 .bar > span { margin-right: auto; }
 
-.handoff { position: fixed; left: 16px; right: 16px; bottom: 64px; max-width: 560px; margin-left: auto; background: var(--surface-2); border: 1px solid var(--rule); border-radius: 8px; padding: 0.75rem; z-index: 3; }
-.handoff p { margin: 0 0 0.5rem; }
-.handoff textarea { width: 100%; resize: vertical; font-size: 0.85rem; }
 
 /* --- phone: each row becomes a two-line card, buttons always in reach --- */
 @media (max-width: 640px) {
