@@ -66,6 +66,9 @@ function Main({ signer, pubkey, onLogout }: { signer: Signer; pubkey: string; on
         onRefresh={hub.refresh}
         publish={hub.publish}
         onLogout={onLogout}
+        suspect={hub.suspect}
+        onTrustRelay={hub.trustRelayData}
+        backupJson={hub.backupJson}
       />
     );
   }

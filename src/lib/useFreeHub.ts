@@ -1,10 +1,12 @@
 // The app's live connection to FreeHub: the last good copy opens instantly (offline
-// too), a fresh load replaces it when a team relay answers, and everything the app
-// signs waits in an outbox until a relay accepts it.
+// too), a fresh load replaces it when a team relay answers (unless the load looks like a
+// wiped relay, see looksWiped), and everything the app signs waits in an outbox until a
+// relay accepts it.
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { EventTemplate, NostrEvent } from 'nostr-tools';
-import { type Access, cache, DeniedError, outbox, resolve, TeamRelays } from './freehub.ts';
+import { TEAM_RELAYS } from '../config.ts';
+import { type Access, cache, DeniedError, looksWiped, outbox, resolve, TeamRelays } from './freehub.ts';
 import type { Signer } from './signer.ts';
 
 const RETRY_MS = 30_000;
@@ -15,6 +17,9 @@ export function useFreeHub(signer: Signer, pubkey: string) {
   const [access, setAccess] = useState<Access>('connecting');
   const [loadedAt, setLoadedAt] = useState<number | undefined>(() => cache.get(pubkey)?.at);
   const [error, setError] = useState('');
+  // Set when the relay answered with far less than this phone has: the phone's copy is kept.
+  const [suspect, setSuspect] = useState<{ fresh: number; cached: number } | null>(null);
+  const trustRelay = useRef(false);
   const relays = useRef<TeamRelays | null>(null);
   const loading = useRef(false);
 
@@ -37,9 +42,16 @@ export function useFreeHub(signer: Signer, pubkey: string) {
     setAccess((a) => (a === 'online' ? a : 'connecting'));
     try {
       const fresh = await r.load(pubkey);
-      setEvents(fresh);
-      cache.set(pubkey, fresh);
-      setLoadedAt(Date.now());
+      const kept = cache.get(pubkey)?.events ?? [];
+      if (!trustRelay.current && looksWiped(kept, fresh)) {
+        setSuspect({ fresh: fresh.length, cached: kept.length });
+      } else {
+        trustRelay.current = false;
+        setSuspect(null);
+        setEvents(fresh);
+        cache.set(pubkey, fresh);
+        setLoadedAt(Date.now());
+      }
       setAccess('online');
       setError('');
       await flush();
@@ -86,5 +98,30 @@ export function useFreeHub(signer: Signer, pubkey: string) {
     return resolve([...events, ...pending.filter((e) => !ids.has(e.id))], pubkey);
   }, [events, pending, pubkey]);
 
-  return { resolution, access, error, pending: pending.length, loadedAt, refresh, publish, hasData: events.length > 0 };
+  /** The user checked the relay and wants its (smaller) data after all. */
+  const trustRelayData = useCallback(() => {
+    trustRelay.current = true;
+    void refresh();
+  }, [refresh]);
+
+  /** Everything this phone holds, as signed events that can be republished to a relay. */
+  const backupJson = useCallback(() => {
+    const ids = new Set(events.map((e) => e.id));
+    const all = [...events, ...pending.filter((e) => !ids.has(e.id))];
+    return JSON.stringify({ app: 'Visitas', savedAt: new Date().toISOString(), pubkey, relays: TEAM_RELAYS, events: all });
+  }, [events, pending, pubkey]);
+
+  return {
+    resolution,
+    access,
+    error,
+    pending: pending.length,
+    loadedAt,
+    refresh,
+    publish,
+    hasData: events.length > 0,
+    suspect,
+    trustRelayData,
+    backupJson,
+  };
 }

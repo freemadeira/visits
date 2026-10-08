@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState, type CSSProperties } from 'react';
 import { npubEncode } from 'nostr-tools/nip19';
 import type { EventTemplate, NostrEvent } from 'nostr-tools';
 import { HEAT, HEAT_NEVER, PALETTE, PALETTE_LABELS, TRIP_MAX, TRIP_MIN } from '../config.ts';
-import { navigateTo, nextStop } from '../lib/field.ts';
+import { navigateTo, nextStop, saveBackup } from '../lib/field.ts';
 import {
   type Access,
   type FreeHubData,
@@ -27,6 +27,10 @@ interface Props {
   loadedAt?: number;
   onRefresh: () => void;
   publish: (t: EventTemplate) => Promise<NostrEvent>;
+  /** The relay answered with far less than this phone has; the phone's copy is kept. */
+  suspect: { fresh: number; cached: number } | null;
+  onTrustRelay: () => void;
+  backupJson: () => string;
   onLogout: () => void;
 }
 
@@ -42,7 +46,7 @@ function heat(ts: number | undefined) {
   return HEAT.find((h) => days <= h.maxDays) ?? HEAT_NEVER;
 }
 
-export default function Tracker({ pubkey, data, access, pending, loadedAt, onRefresh, publish, onLogout }: Props) {
+export default function Tracker({ pubkey, data, access, pending, loadedAt, onRefresh, publish, onLogout, suspect, onTrustRelay, backupJson }: Props) {
   const { lastVisit } = data;
   const [showClosed, setShowClosed] = useState(false);
   // Closed places (they don't exist anymore) drop out of the list unless asked for.
@@ -167,6 +171,15 @@ export default function Tracker({ pubkey, data, access, pending, loadedAt, onRef
           : `Offline${pending ? ` · ${pending} waiting to send` : ''}`;
   const urgentCount = Object.keys(state.urgent).length;
 
+  const [backupNote, setBackupNote] = useState('');
+  async function backup() {
+    try {
+      setBackupNote(`Saved to ${await saveBackup(backupJson())}`);
+    } catch (e) {
+      setBackupNote(`Backup failed: ${e instanceof Error ? e.message : String(e)}`);
+    }
+  }
+
 
 
   return (
@@ -184,8 +197,31 @@ export default function Tracker({ pubkey, data, access, pending, loadedAt, onRef
           {status}
           {loadedAt && access !== 'online' && ` · list from ${new Date(loadedAt).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' })}`}
         </span>
+        <button className="small" onClick={backup}>💾 Backup</button>
         <button className="small" onClick={onRefresh}>Refresh</button>
       </div>
+      {backupNote && (
+        <p className="small muted" onClick={() => setBackupNote('')}>
+          {backupNote}
+        </p>
+      )}
+
+      {suspect && (
+        <div className="sync pending">
+          <span className="small">
+            ⚠️ The relay sent only {suspect.fresh} of the {suspect.cached} items this phone has. Keeping the phone's copy:
+            it may be the only one. Tap 💾 Backup, then check the relay.
+          </span>
+          <button
+            className="small"
+            onClick={() => {
+              if (confirm(`Replace this phone's ${suspect.cached} items with the relay's ${suspect.fresh}? Back up first.`)) onTrustRelay();
+            }}
+          >
+            Use relay's data
+          </button>
+        </div>
+      )}
 
       <div className="controls">
         <input type="search" placeholder="Filter by name" value={filter} onChange={(e) => setFilter(e.target.value)} />

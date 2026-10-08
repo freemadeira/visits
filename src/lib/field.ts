@@ -8,6 +8,7 @@ import type { Merchant } from './freehub.ts';
 interface FieldMediaPlugin {
   capture(o: { kind: 'photo' | 'video'; folder: string; filename: string }): Promise<{ saved: boolean; path?: string }>;
   openUrl(o: { url: string }): Promise<void>;
+  saveExport(o: { filename: string; json: string }): Promise<{ path: string }>;
 }
 
 const FieldMedia = registerPlugin<FieldMediaPlugin>('FieldMedia');
@@ -78,4 +79,19 @@ export function navigateTo(m: Merchant) {
 /** The next place: the first picked business not yet visited today. */
 export function nextStop(stops: Merchant[], visitedToday: (m: Merchant) => boolean): Merchant | undefined {
   return stops.find((m) => !visitedToday(m));
+}
+
+/**
+ * Saves a backup file: on the phone to Documents/FREE Madeira/exports/ (only this app and
+ * file managers you open yourself see it), in a browser as a download. Returns where.
+ */
+export async function saveBackup(json: string): Promise<string> {
+  const filename = `freehub-backup-${stamp()}`;
+  if (isNative()) return (await FieldMedia.saveExport({ filename, json })).path;
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([json], { type: 'application/json' }));
+  a.download = `${filename}.json`;
+  a.click();
+  URL.revokeObjectURL(a.href);
+  return `Downloads/${filename}.json`;
 }

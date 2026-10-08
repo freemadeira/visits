@@ -614,6 +614,14 @@ export const outbox = {
   remove: (pk: string, id: string) => write(outboxKey(pk), outbox.list(pk).filter((e) => e.id !== id)),
 };
 
+/**
+ * A load much smaller than the copy already on this phone: an emptied or broken relay.
+ * It must not replace the phone's copy, which may be the only one left (2026-10-08).
+ */
+export function looksWiped(kept: NostrEvent[], fresh: NostrEvent[]): boolean {
+  return kept.length >= 20 && fresh.length < kept.length / 2;
+}
+
 /** Last good load, so the list opens offline. */
 export const cache = {
   get: (pk: string) => read<{ at: number; events: NostrEvent[] } | null>(cacheKey(pk), null),
