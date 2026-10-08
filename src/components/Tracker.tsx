@@ -331,7 +331,13 @@ export default function Tracker({ pubkey, data, access, pending, loadedAt, onRef
             const m = merchants[open];
             if (m.unlisted) {
               // First check-in at an FM24 business: add it to FreeHub, with the choices made.
-              const create = newMerchantTemplate(data, pubkey, { name: m.name, lat: null, lon: null, journey: change.journey, followUp: change.followUp });
+              const create = newMerchantTemplate(data, pubkey, {
+                name: m.name,
+                lat: change.location?.lat ?? null,
+                lon: change.location?.lon ?? null,
+                journey: change.journey,
+                followUp: change.followUp,
+              });
               await publish(create);
               await publish(visitTemplate(merchantFromTemplate(create, pubkey, m.name), note));
               setOpen(null);
@@ -343,6 +349,7 @@ export default function Tracker({ pubkey, data, access, pending, loadedAt, onRef
             setOpen(null);
           }}
           onClose={() => setOpen(null)}
+          canSaveLocation={!!(data.fields.location || (data.fields.lat && data.fields.lon))}
         />
       )}
       {adding && (

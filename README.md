@@ -9,10 +9,18 @@ and new merchants as FreeHub events.
 
 - **Relay:** `wss://relay.freemadeira.org/private` (Haven private relay, NIP-42 AUTH +
   whitelist). The whitelist is the access control: no merchant data ships in the app.
-- **Reads:** the project's CRM table with slug `merchants` (kind 30305), its records
-  (30306), and `activity: visit` comments (1111) for heat.
-- **Writes:** a visit comment on **Check in & save**, and a new record on **Add merchant**,
-  the same shapes FreeHub produces.
+- **Reads:** the project's Merchants CRM table (kind 30305), its records (30306), and
+  `activity: visit` comments (1111) for heat. The table is recognised by its content: a
+  Journey stage plus Latitude/Longitude fields, or a Location field on a merchant-named
+  table. A slug starting with `merchant` is only a fallback.
+- **Writes:** a visit comment on **Check in & save**, plus the record republished whole
+  when the visit changes its Journey, follow-up flag or location; and a new record on
+  **Add merchant**. These are the same shapes FreeHub produces.
+- **Locations and FreeHub's map:** coordinates are read from the **Location** field first
+  (FreeHub's `lat,lng` format), with Latitude/Longitude as a fallback. New merchants and
+  locations filled in during a visit (**📍 Use my position here**, shown only when a
+  merchant has none) are written to both. FreeHub's map pins only records with a Location
+  value, so the Merchants table needs a Location field.
 - **Signing:** Amber on the phone (NIP-55), with no relays involved in signing. NIP-07 /
   NIP-46 work in a browser.
 - **Offline:** the last list is cached, and signed events wait in an outbox until a relay

@@ -39,11 +39,17 @@ export async function capture(kind: 'photo' | 'video', merchant: Merchant, date:
   return r.saved && r.path ? r.path : null;
 }
 
-export function currentPosition(): Promise<{ lat: number; lon: number }> {
+/** The phone's position; `accuracy` is the fix's radius in metres, when the device gives one. */
+export function currentPosition(): Promise<{ lat: number; lon: number; accuracy?: number }> {
   return new Promise((resolve, reject) => {
     if (!navigator.geolocation) return reject(new Error('No location on this device.'));
     navigator.geolocation.getCurrentPosition(
-      (p) => resolve({ lat: Number(p.coords.latitude.toFixed(7)), lon: Number(p.coords.longitude.toFixed(7)) }),
+      (p) =>
+        resolve({
+          lat: Number(p.coords.latitude.toFixed(7)),
+          lon: Number(p.coords.longitude.toFixed(7)),
+          accuracy: Number.isFinite(p.coords.accuracy) ? p.coords.accuracy : undefined,
+        }),
       (e) => reject(new Error(e.message || 'Location unavailable.')),
       { enableHighAccuracy: true, timeout: 20_000 },
     );

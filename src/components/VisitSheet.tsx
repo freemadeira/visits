@@ -1,19 +1,21 @@
 import { useState } from 'react';
-import { capture, isNative, navigateTo } from '../lib/field.ts';
-import type { JourneyChoice, Merchant, RecordChange } from '../lib/freehub.ts';
+import { capture, currentPosition, isNative, navigateTo } from '../lib/field.ts';
+import { validLocation, type JourneyChoice, type Merchant, type RecordChange } from '../lib/freehub.ts';
 import { localDate, today } from '../lib/state.ts';
 
 interface Props {
   merchant: Merchant;
   /** Unix time of the latest team visit, if any. */
   lastVisit?: number;
-  /** Publishes the visit, then any Journey / follow-up change, to FreeHub. */
+  /** Publishes the visit, then any Journey / follow-up / location change, to FreeHub. */
   onSave: (note: string, change: RecordChange) => Promise<void>;
   onClose: () => void;
+  /** The Merchants table has somewhere to keep a position (Location, or Latitude + Longitude). */
+  canSaveLocation: boolean;
 }
 
 // Notes are FreeHub's: the sheet shows when the last visit was, not what it said.
-export default function VisitSheet({ merchant, lastVisit, onSave, onClose }: Props) {
+export default function VisitSheet({ merchant, lastVisit, onSave, onClose, canSaveLocation }: Props) {
   const [note, setNote] = useState('');
   const [media, setMedia] = useState<string[]>([]);
   const [err, setErr] = useState('');
@@ -21,7 +23,26 @@ export default function VisitSheet({ merchant, lastVisit, onSave, onClose }: Pro
   const [journey, setJourney] = useState<JourneyChoice | undefined>();
   // Starts at the merchant's current flag: untick to clear it, tick to set it.
   const [followUp, setFollowUp] = useState(merchant.needsFollowUp);
-  const dirty = note.trim() !== '' || media.length > 0 || !!journey || followUp !== merchant.needsFollowUp;
+  // A position for a merchant that has none, from the phone's GPS. Never replaces one.
+  const missingLocation = canSaveLocation && (merchant.lat === null || merchant.lon === null);
+  const [position, setPosition] = useState<{ lat: number; lon: number; accuracy?: number } | null>(null);
+  const [positionErr, setPositionErr] = useState('');
+  const dirty =
+    note.trim() !== '' || media.length > 0 || !!journey || followUp !== merchant.needsFollowUp || !!position;
+
+  async function locate() {
+    setPositionErr('');
+    setBusy(true);
+    try {
+      const p = await currentPosition();
+      if (validLocation(p.lat, p.lon)) setPosition(p);
+      else setPositionErr("Couldn't get a real position, try again outside.");
+    } catch (e) {
+      setPositionErr(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  }
 
   async function shoot(kind: 'photo' | 'video') {
     setErr('');
@@ -40,7 +61,7 @@ export default function VisitSheet({ merchant, lastVisit, onSave, onClose }: Pro
     setErr('');
     setBusy(true);
     try {
-      await onSave(note.trim(), { journey, followUp });
+      await onSave(note.trim(), { journey, followUp, location: position ? { lat: position.lat, lon: position.lon } : undefined });
     } catch (e) {
       setErr(e instanceof Error ? e.message : String(e));
       setBusy(false);
@@ -67,6 +88,26 @@ export default function VisitSheet({ merchant, lastVisit, onSave, onClose }: Pro
         </header>
 
         <button onClick={() => navigateTo(merchant).catch((e) => setErr(String(e)))}>🧭 Navigate</button>
+
+        {missingLocation && (
+          <div className="location">
+            {position ? (
+              <p className="position">
+                <span>
+                  📍 {position.lat.toFixed(5)}, {position.lon.toFixed(5)}
+                  {position.accuracy !== undefined && ` (±${Math.round(position.accuracy)} m)`}
+                </span>
+                <button className="ghost small" aria-label="Drop this position" onClick={() => setPosition(null)}>✕</button>
+              </p>
+            ) : (
+              <>
+                <p className="muted small">📍 No location yet</p>
+                <button disabled={busy} onClick={locate}>📍 Use my position here</button>
+              </>
+            )}
+            {positionErr && <p className="error">{positionErr}</p>}
+          </div>
+        )}
 
         <div className="row journey">
           <button

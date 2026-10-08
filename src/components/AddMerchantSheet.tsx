@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { currentPosition } from '../lib/field.ts';
-import type { NewMerchant, Option } from '../lib/freehub.ts';
+import { validLocation, type NewMerchant, type Option } from '../lib/freehub.ts';
 
 interface Props {
   /** The Merchants table's Area options (new areas are added in FreeHub). */
@@ -41,6 +41,7 @@ export default function AddMerchantSheet({ areas, existingNames, onAdd, onClose 
     if ((la !== null && !Number.isFinite(la)) || (lo !== null && !Number.isFinite(lo)) || (la === null) !== (lo === null)) {
       return setErr('Latitude and longitude must both be numbers (or both empty).');
     }
+    if (la !== null && !validLocation(la, lo)) return setErr("That isn't a real position (check latitude and longitude).");
     setBusy(true);
     try {
       await onAdd({ name: n, areaOption: area || undefined, lat: la, lon: lo });
