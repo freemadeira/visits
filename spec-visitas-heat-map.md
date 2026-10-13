@@ -1,6 +1,6 @@
 # spec — Visitas heat-map view (v1, simplest)
 
-**Status:** settled — ready to build
+**Status:** built — unverified
 **Captured:** 2026-10-13, from `/vibe-spec` brief by Zapa — "visitas app is missing a heat map, I need a visual map so I can see what areas I did vs what I need to visit, following my heat map prior idea". Mid-draft redirect: **"basically I'm looking for the simplest implementation atm"** and **"gray never visited (no field notes), then by colour as we keep visiting merchants"**.
 **So that:** the operator opens Visitas, flips to Map, and sees at a glance which merchants have been visited (coloured by recency) vs. untouched (gray).
 **Part of:** `data/build-order.md` #5 (originally a FreeHub-side "weather map"; this spec moves the scope into Visitas as a minimal v1 so it ships without waiting on FreeHub).
