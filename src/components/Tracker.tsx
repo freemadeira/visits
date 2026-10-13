@@ -17,6 +17,7 @@ import { distanceKm, highlights } from '../lib/geo.ts';
 import { keyOf } from '../lib/keys.ts';
 import { localDate, today, toggleUrgent, useTrackerState } from '../lib/state.ts';
 import AddMerchantSheet from './AddMerchantSheet.tsx';
+import MapView from './MapView.tsx';
 import VisitSheet from './VisitSheet.tsx';
 
 interface Props {
@@ -258,6 +259,30 @@ export default function Tracker({ pubkey, data, access, pending, loadedAt, onRef
           {merchants.length} businesses · {urgentCount} urgent · {data.project.title}
         </span>
       </div>
+      <div className="view-toggle small" role="tablist" aria-label="View">
+        <button
+          type="button"
+          role="tab"
+          aria-selected={state.view === 'list'}
+          className={state.view === 'list' ? 'active' : ''}
+          onClick={() => update((s) => ({ ...s, view: 'list' }))}
+        >
+          List
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={state.view === 'map'}
+          className={state.view === 'map' ? 'active' : ''}
+          onClick={() => update((s) => ({ ...s, view: 'map' }))}
+        >
+          Map
+        </button>
+      </div>
+      {state.view === 'map' ? (
+        <MapView merchants={merchants} lastVisit={lastVisit} onOpenMerchant={setOpen} />
+      ) : (
+        <>
       <div className="legend small">
         {[...HEAT, HEAT_NEVER].filter((h, i, a) => a.findIndex((x) => x.label === h.label) === i).map((h) => (
           <span key={h.label}>
@@ -360,6 +385,8 @@ export default function Tracker({ pubkey, data, access, pending, loadedAt, onRef
           🧭 Navigate to next
         </button>
       </footer>
+        </>
+      )}
 
       {open !== null && merchants[open] && (
         <VisitSheet

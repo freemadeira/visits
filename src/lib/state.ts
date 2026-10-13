@@ -8,10 +8,12 @@ export interface TrackerState {
   /** merchant id → palette index. */
   urgent: Record<string, number>;
   radiusKm: number;
+  /** Which body renders: the list (default) or the heat-map view. */
+  view: 'list' | 'map';
 }
 
 const lsKey = (pubkey: string) => `visit-tracker.state.${pubkey}`;
-const empty = (): TrackerState => ({ urgent: {}, radiusKm: DEFAULT_RADIUS_KM });
+const empty = (): TrackerState => ({ urgent: {}, radiusKm: DEFAULT_RADIUS_KM, view: 'list' });
 
 type Raw = Partial<TrackerState>;
 
@@ -27,7 +29,12 @@ function readRaw(pubkey: string): Raw {
 export function useTrackerState(pubkey: string) {
   const [state, setState] = useState<TrackerState>(() => {
     const raw = readRaw(pubkey);
-    return { ...empty(), urgent: raw.urgent ?? {}, radiusKm: raw.radiusKm ?? DEFAULT_RADIUS_KM };
+    return {
+      ...empty(),
+      urgent: raw.urgent ?? {},
+      radiusKm: raw.radiusKm ?? DEFAULT_RADIUS_KM,
+      view: raw.view === 'map' ? 'map' : 'list',
+    };
   });
   const [saveFailed, setSaveFailed] = useState(false);
 
