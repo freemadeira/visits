@@ -163,7 +163,7 @@ export default function VisitSheet({ merchant, lastVisit, onSave, onClose, canSa
             aria-pressed={journey === 'closed'}
             onClick={() => setJourney((j) => (j === 'closed' ? undefined : 'closed'))}
           >
-            {JOURNEY_EMOJI.closed} Closed
+            {JOURNEY_EMOJI.closed} Closed/relocated
           </button>
         </div>
         <label className="followup">
