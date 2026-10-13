@@ -284,6 +284,7 @@ export default function Tracker({ pubkey, data, access, pending, loadedAt, onRef
           merchants={merchants}
           lastTouch={data.lastTouch}
           selectedIds={new Set([...selected].map((i) => merchants[i].id))}
+          urgentById={new Map(Object.entries(state.urgent))}
         />
       ) : (
         <>
