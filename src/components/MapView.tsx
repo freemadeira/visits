@@ -19,6 +19,8 @@ interface Props {
   merchants: Merchant[];
   /** Merchant id → unix seconds of the newest activity on it (visit OR note). */
   lastTouch: Map<string, number>;
+  /** Merchant ids the user has checked (urgent-flagged) in the list — pop them. */
+  urgentIds: Set<string>;
 }
 
 interface Pin {
@@ -27,10 +29,13 @@ interface Pin {
   pos: LatLngTuple;
   color: string;
   label: string;
+  urgent: boolean;
 }
 
 const PIN_RADIUS = 7; // ~14px disc, bumped from the spec's 12–14 lean for finger targets.
+const PIN_RADIUS_URGENT = 10; // ~20px disc for checked merchants; same HEAT fill, louder presence.
 const PIN_STYLE: CircleMarkerOptions = { weight: 1, color: '#222', fillOpacity: 0.95 };
+const PIN_STYLE_URGENT: CircleMarkerOptions = { weight: 3, color: '#ffffff', fillOpacity: 1 };
 
 /** Zoom/pan to fit the pins once per data change; falls back to Funchal on an empty set. */
 function FitToPins({ pins }: { pins: Pin[] }) {
@@ -50,7 +55,7 @@ function FitToPins({ pins }: { pins: Pin[] }) {
   return null;
 }
 
-export default function MapView({ merchants, lastTouch }: Props) {
+export default function MapView({ merchants, lastTouch, urgentIds }: Props) {
   const pins: Pin[] = useMemo(
     () =>
       merchants
@@ -59,9 +64,16 @@ export default function MapView({ merchants, lastTouch }: Props) {
         .map(({ i, m }) => {
           const ts = lastTouch.get(m.id);
           const band = ts ? heat(ts) : MAP_NO_VISIT;
-          return { i, m, pos: [m.lat as number, m.lon as number] as LatLngTuple, color: band.color, label: band.label };
+          return {
+            i,
+            m,
+            pos: [m.lat as number, m.lon as number] as LatLngTuple,
+            color: band.color,
+            label: band.label,
+            urgent: urgentIds.has(m.id),
+          };
         }),
-    [merchants, lastTouch],
+    [merchants, lastTouch, urgentIds],
   );
 
   const mapped = pins.length;
@@ -90,8 +102,12 @@ export default function MapView({ merchants, lastTouch }: Props) {
           <CircleMarker
             key={p.m.id}
             center={p.pos}
-            radius={PIN_RADIUS}
-            pathOptions={{ ...PIN_STYLE, fillColor: p.color }}
+            radius={p.urgent ? PIN_RADIUS_URGENT : PIN_RADIUS}
+            pathOptions={
+              p.urgent
+                ? { ...PIN_STYLE_URGENT, fillColor: p.color }
+                : { ...PIN_STYLE, fillColor: p.color }
+            }
           >
             <Tooltip direction="top" offset={[0, -4]} opacity={0.95}>
               {p.m.name} · {p.label}

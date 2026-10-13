@@ -300,7 +300,10 @@ export function resolve(events: NostrEvent[], me: string): Resolution {
     status: optionLabel(fields.journey, r.values[fields.journey?.id ?? '']?.[0]),
     journeyId: r.values[fields.journey?.id ?? '']?.[0] ?? '',
     needsFollowUp: r.values[fields.followUp?.id ?? '']?.[0] === 'true',
-    closed: norm(optionLabel(fields.journey, r.values[fields.journey?.id ?? '']?.[0])) === 'closed',
+    // "Closed" = whichever FreeHub stage Visitas treats as the closed dead-end
+    // (JOURNEY_LABEL.closed). Currently "Not interested" until the team repo ships a
+    // real Closed stage; swap in one place when it lands.
+    closed: norm(optionLabel(fields.journey, r.values[fields.journey?.id ?? '']?.[0])) === norm(JOURNEY_LABEL.closed),
     osm: r.values[fields.osm?.id ?? '']?.[0] ?? '',
     lat: coords(r)?.lat ?? null,
     lon: coords(r)?.lon ?? null,
@@ -406,8 +409,39 @@ function recordTags(table: Table, project: Project, r: Omit<CrmRecord, 'author' 
   return tags;
 }
 
-export type JourneyChoice = 'accepting' | 'closed';
-const JOURNEY_LABEL: Record<JourneyChoice, string> = { accepting: 'Accepting bitcoin', closed: 'Closed' };
+export type JourneyChoice =
+  | 'lead'
+  | 'contacted'
+  | 'interested'
+  | 'onboarding'
+  | 'accepting'
+  | 'closed';
+// Maps Visitas's internal journey ids to FreeHub Merchants-table stage labels. "closed"
+// is a Visitas-side concept the team repo doesn't carry yet — it currently writes
+// "Not interested" (the nearest existing dead-end stage) as a bridge until the
+// freemadeira/freehub Merchants table adds a real Closed stage (see
+// spec-freehub-merchants-closed-stage.md handed to the team). When Closed lands on the
+// Merchants table, swap this one label and the Tracker's `closed` detection follows.
+const JOURNEY_LABEL: Record<JourneyChoice, string> = {
+  lead: 'Lead',
+  contacted: 'Contacted',
+  interested: 'Interested',
+  onboarding: 'Onboarding',
+  accepting: 'Accepting bitcoin',
+  closed: 'Not interested',
+};
+// The ordered onboarding ladder for the "cycle with press" button in VisitSheet. Doesn't
+// include `accepting` (its own button) or `closed` (its own button).
+export const ONBOARDING_LADDER: JourneyChoice[] = ['lead', 'contacted', 'interested', 'onboarding'];
+export const JOURNEY_EMOJI: Record<JourneyChoice, string> = {
+  lead: '🌱',
+  contacted: '📞',
+  interested: '👀',
+  onboarding: '🛠️',
+  accepting: '✅',
+  closed: '❌',
+};
+export const journeyLabel = (j: JourneyChoice): string => JOURNEY_LABEL[j];
 
 export interface RecordChange {
   journey?: JourneyChoice;

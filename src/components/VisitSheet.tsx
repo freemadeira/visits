@@ -1,6 +1,14 @@
 import { useState } from 'react';
 import { capture, currentPosition, isNative, navigateTo } from '../lib/field.ts';
-import { validLocation, type JourneyChoice, type Merchant, type RecordChange } from '../lib/freehub.ts';
+import {
+  JOURNEY_EMOJI,
+  ONBOARDING_LADDER,
+  journeyLabel,
+  validLocation,
+  type JourneyChoice,
+  type Merchant,
+  type RecordChange,
+} from '../lib/freehub.ts';
 import { localDate, today } from '../lib/state.ts';
 
 interface Props {
@@ -21,6 +29,13 @@ export default function VisitSheet({ merchant, lastVisit, onSave, onClose, canSa
   const [err, setErr] = useState('');
   const [busy, setBusy] = useState(false);
   const [journey, setJourney] = useState<JourneyChoice | undefined>();
+  // The cycling onboarding button sits on its own position in the ladder; a tap advances
+  // to the next stage. Once the user commits a stage (via "select" on the cycler, or by
+  // tapping Accepting / Closed), `journey` holds the chosen value and overrides the local
+  // cycle. The cycle starts at Lead each time the sheet opens — not persisted.
+  const [onboardingIdx, setOnboardingIdx] = useState(0);
+  const cycleJourney = ONBOARDING_LADDER[onboardingIdx];
+  const onboardingSelected = journey !== undefined && (ONBOARDING_LADDER as JourneyChoice[]).includes(journey);
   // Starts at the merchant's current flag: untick to clear it, tick to set it.
   const [followUp, setFollowUp] = useState(merchant.needsFollowUp);
   // A position for a merchant that has none, from the phone's GPS. Never replaces one.
@@ -111,18 +126,44 @@ export default function VisitSheet({ merchant, lastVisit, onSave, onClose, canSa
 
         <div className="row journey">
           <button
+            className={onboardingSelected ? 'on' : ''}
+            aria-pressed={onboardingSelected}
+            onClick={() => {
+              if (onboardingSelected) {
+                // Already selected an onboarding stage — one tap cycles to the next and
+                // keeps it selected, so it stays the committed journey.
+                const next = (onboardingIdx + 1) % ONBOARDING_LADDER.length;
+                setOnboardingIdx(next);
+                setJourney(ONBOARDING_LADDER[next]);
+                return;
+              }
+              // First tap: commit the current cycle position as the chosen stage.
+              setJourney(cycleJourney);
+            }}
+            onContextMenu={(e) => {
+              // Long-press / right-click clears the selection and advances the preview,
+              // in case you tapped the wrong stage. KISS: no gesture docs, just works.
+              e.preventDefault();
+              setJourney(undefined);
+              setOnboardingIdx((i) => (i + 1) % ONBOARDING_LADDER.length);
+            }}
+          >
+            {JOURNEY_EMOJI[onboardingSelected ? (journey as JourneyChoice) : cycleJourney]}{' '}
+            {journeyLabel(onboardingSelected ? (journey as JourneyChoice) : cycleJourney)}
+          </button>
+          <button
             className={journey === 'accepting' ? 'on ok' : ''}
             aria-pressed={journey === 'accepting'}
             onClick={() => setJourney((j) => (j === 'accepting' ? undefined : 'accepting'))}
           >
-            ✅ Accepting bitcoin
+            {JOURNEY_EMOJI.accepting} Accepting bitcoin
           </button>
           <button
             className={journey === 'closed' ? 'on bad' : ''}
             aria-pressed={journey === 'closed'}
             onClick={() => setJourney((j) => (j === 'closed' ? undefined : 'closed'))}
           >
-            ❌ Closed
+            {JOURNEY_EMOJI.closed} Closed
           </button>
         </div>
         <label className="followup">
