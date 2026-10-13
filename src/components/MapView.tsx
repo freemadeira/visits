@@ -19,8 +19,9 @@ interface Props {
   merchants: Merchant[];
   /** Merchant id → unix seconds of the newest activity on it (visit OR note). */
   lastTouch: Map<string, number>;
-  /** Merchant ids the user has checked (urgent-flagged) in the list — pop them. */
-  urgentIds: Set<string>;
+  /** Merchant ids the user has selected in the list — the group a trip is being planned
+   *  around. These pin brighter / larger so the trip's shape is visible on the map. */
+  selectedIds: Set<string>;
 }
 
 interface Pin {
@@ -29,13 +30,15 @@ interface Pin {
   pos: LatLngTuple;
   color: string;
   label: string;
-  urgent: boolean;
+  selected: boolean;
 }
 
 const PIN_RADIUS = 7; // ~14px disc, bumped from the spec's 12–14 lean for finger targets.
-const PIN_RADIUS_URGENT = 10; // ~20px disc for checked merchants; same HEAT fill, louder presence.
+const PIN_RADIUS_SELECTED = 10; // ~20px disc for list-selected merchants (the trip anchors).
 const PIN_STYLE: CircleMarkerOptions = { weight: 1, color: '#222', fillOpacity: 0.95 };
-const PIN_STYLE_URGENT: CircleMarkerOptions = { weight: 3, color: '#ffffff', fillOpacity: 1 };
+// Selected: same HEAT fill colour, brighter — thick white outline makes the fill read
+// as lighter without changing hue. Replaces the earlier radius-ring idea.
+const PIN_STYLE_SELECTED: CircleMarkerOptions = { weight: 3, color: '#ffffff', fillOpacity: 1 };
 
 /** Zoom/pan to fit the pins once per data change; falls back to Funchal on an empty set. */
 function FitToPins({ pins }: { pins: Pin[] }) {
@@ -55,7 +58,7 @@ function FitToPins({ pins }: { pins: Pin[] }) {
   return null;
 }
 
-export default function MapView({ merchants, lastTouch, urgentIds }: Props) {
+export default function MapView({ merchants, lastTouch, selectedIds }: Props) {
   const pins: Pin[] = useMemo(
     () =>
       merchants
@@ -70,10 +73,10 @@ export default function MapView({ merchants, lastTouch, urgentIds }: Props) {
             pos: [m.lat as number, m.lon as number] as LatLngTuple,
             color: band.color,
             label: band.label,
-            urgent: urgentIds.has(m.id),
+            selected: selectedIds.has(m.id),
           };
         }),
-    [merchants, lastTouch, urgentIds],
+    [merchants, lastTouch, selectedIds],
   );
 
   const mapped = pins.length;
@@ -102,10 +105,10 @@ export default function MapView({ merchants, lastTouch, urgentIds }: Props) {
           <CircleMarker
             key={p.m.id}
             center={p.pos}
-            radius={p.urgent ? PIN_RADIUS_URGENT : PIN_RADIUS}
+            radius={p.selected ? PIN_RADIUS_SELECTED : PIN_RADIUS}
             pathOptions={
-              p.urgent
-                ? { ...PIN_STYLE_URGENT, fillColor: p.color }
+              p.selected
+                ? { ...PIN_STYLE_SELECTED, fillColor: p.color }
                 : { ...PIN_STYLE, fillColor: p.color }
             }
           >
