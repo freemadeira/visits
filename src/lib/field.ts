@@ -40,21 +40,52 @@ export async function capture(kind: 'photo' | 'video', merchant: Merchant, date:
   return r.saved && r.path ? r.path : null;
 }
 
+export interface Position {
+  lat: number;
+  lon: number;
+  /** Fix radius in metres, when the device gives one. */
+  accuracy?: number;
+}
+
 /** The phone's position; `accuracy` is the fix's radius in metres, when the device gives one. */
-export function currentPosition(): Promise<{ lat: number; lon: number; accuracy?: number }> {
+export function currentPosition(): Promise<Position> {
   return new Promise((resolve, reject) => {
     if (!navigator.geolocation) return reject(new Error('No location on this device.'));
     navigator.geolocation.getCurrentPosition(
-      (p) =>
-        resolve({
-          lat: Number(p.coords.latitude.toFixed(7)),
-          lon: Number(p.coords.longitude.toFixed(7)),
-          accuracy: Number.isFinite(p.coords.accuracy) ? p.coords.accuracy : undefined,
-        }),
+      (p) => resolve(coordsToPosition(p.coords)),
       (e) => reject(new Error(e.message || 'Location unavailable.')),
       { enableHighAccuracy: true, timeout: 20_000 },
     );
   });
+}
+
+/**
+ * Streams the phone's position until the returned stop() is called. `onError` fires once
+ * for each error from the browser's watcher; the watch keeps running (position may still
+ * recover). Call stop() when the consumer unmounts to drop the GPS subscription.
+ */
+export function watchMyPosition(
+  onPosition: (p: Position) => void,
+  onError?: (message: string) => void,
+): () => void {
+  if (!navigator.geolocation) {
+    onError?.('No location on this device.');
+    return () => {};
+  }
+  const id = navigator.geolocation.watchPosition(
+    (p) => onPosition(coordsToPosition(p.coords)),
+    (e) => onError?.(e.message || 'Location unavailable.'),
+    { enableHighAccuracy: true, maximumAge: 5_000, timeout: 20_000 },
+  );
+  return () => navigator.geolocation.clearWatch(id);
+}
+
+function coordsToPosition(c: GeolocationCoordinates): Position {
+  return {
+    lat: Number(c.latitude.toFixed(7)),
+    lon: Number(c.longitude.toFixed(7)),
+    accuracy: Number.isFinite(c.accuracy) ? c.accuracy : undefined,
+  };
 }
 
 async function open(url: string) {

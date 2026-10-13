@@ -59,8 +59,10 @@ input, textarea { background: var(--surface-2); border: 1px solid var(--rule); b
 .radius input { width: 4.5rem; }
 
 .table-wrap { overflow-x: auto; border: 1px solid var(--rule); border-radius: 8px; }
-.map-wrap { border: 1px solid var(--rule); border-radius: 8px; overflow: hidden; }
+.map-wrap { border: 1px solid var(--rule); border-radius: 8px; overflow: hidden; position: relative; }
 .map-wrap .legend { padding: 0.4rem 0.6rem; margin: 0; background: var(--surface); border-top: 1px solid var(--rule); }
+.map-me { position: absolute; top: 0.6rem; right: 0.6rem; z-index: 1000; background: var(--surface); color: var(--muted); border: 1px solid var(--rule); border-radius: 999px; padding: 0.2rem 0.6rem; cursor: pointer; }
+.map-me:disabled { opacity: 0.5; cursor: default; }
 .view-toggle { display: inline-flex; gap: 0; margin-bottom: 0.6rem; border: 1px solid var(--rule); border-radius: 999px; overflow: hidden; }
 .view-toggle button { background: transparent; color: var(--muted); border: 0; padding: 0.2rem 0.8rem; font: inherit; cursor: pointer; }
 .view-toggle button.active { background: var(--accent); color: var(--accent-ink); }

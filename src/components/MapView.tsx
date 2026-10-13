@@ -8,11 +8,12 @@
 // visit event even though they'd been visited. `lastTouch` picks up those notes so the
 // map shows them coloured rather than gray. The list keeps the stricter `lastVisit`.
 
-import { useEffect, useMemo } from 'react';
-import L, { type CircleMarkerOptions, type LatLngBoundsExpression, type LatLngTuple } from 'leaflet';
-import { MapContainer, TileLayer, CircleMarker, Marker, Tooltip, useMap } from 'react-leaflet';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import L, { type CircleMarkerOptions, type LatLngBoundsExpression, type LatLngTuple, type Map as LeafletMap } from 'leaflet';
+import { MapContainer, TileLayer, CircleMarker, Circle, Marker, Tooltip, useMap } from 'react-leaflet';
 import { HEAT, HEAT_NEVER, MAP_FALLBACK_CENTER, MAP_FALLBACK_ZOOM, MAP_NO_VISIT, PALETTE } from '../config.ts';
 import type { Merchant } from '../lib/freehub.ts';
+import { watchMyPosition, type Position } from '../lib/field.ts';
 import { heat } from '../lib/heat.ts';
 
 interface Props {
@@ -59,6 +60,41 @@ function urgentIcon(color: string, selected: boolean) {
   });
 }
 
+// "You are here" dot: smaller than a merchant pin (radius 7 / 10 selected) so it reads
+// as context, not a pin. Blue is the web convention for own-position.
+const ME_RADIUS = 5;
+const ME_STYLE: CircleMarkerOptions = { color: '#ffffff', weight: 2, fillColor: '#2962ff', fillOpacity: 1 };
+// Translucent accuracy ring; muted enough not to compete with merchants.
+const ME_ACCURACY_STYLE: CircleMarkerOptions = { color: '#2962ff', weight: 1, fillColor: '#2962ff', fillOpacity: 0.08 };
+
+function MyLocation({ pos }: { pos: Position | null }) {
+  if (!pos) return null;
+  const latlng: LatLngTuple = [pos.lat, pos.lon];
+  return (
+    <>
+      {pos.accuracy !== undefined && pos.accuracy > 0 && (
+        <Circle center={latlng} radius={pos.accuracy} pathOptions={ME_ACCURACY_STYLE} />
+      )}
+      <CircleMarker center={latlng} radius={ME_RADIUS} pathOptions={ME_STYLE}>
+        <Tooltip direction="top" offset={[0, -4]} opacity={0.95}>You are here</Tooltip>
+      </CircleMarker>
+    </>
+  );
+}
+
+/** Captures the map instance so the "📍 Me" button (which lives outside the map DOM so
+ *  it floats as a UI control) can call setView. */
+function CaptureMap({ mapRef }: { mapRef: React.MutableRefObject<LeafletMap | null> }) {
+  const map = useMap();
+  useEffect(() => {
+    mapRef.current = map;
+    return () => {
+      mapRef.current = null;
+    };
+  }, [map, mapRef]);
+  return null;
+}
+
 /** Zoom/pan to fit the pins once per data change; falls back to Funchal on an empty set. */
 function FitToPins({ pins }: { pins: Pin[] }) {
   const map = useMap();
@@ -78,6 +114,12 @@ function FitToPins({ pins }: { pins: Pin[] }) {
 }
 
 export default function MapView({ merchants, lastTouch, selectedIds, urgentById }: Props) {
+  // "You are here" — streams while the Map view is mounted. Stops on unmount (view
+  // switched back to List, or sheet opened over the map). KISS: no toggle, no settings.
+  const [myPos, setMyPos] = useState<Position | null>(null);
+  useEffect(() => watchMyPosition(setMyPos), []);
+  const mapRef = useRef<LeafletMap | null>(null);
+
   const pins: Pin[] = useMemo(
     () =>
       merchants
@@ -108,8 +150,22 @@ export default function MapView({ merchants, lastTouch, selectedIds, urgentById 
     (h, i, a) => a.findIndex((x) => x.label === h.label) === i,
   );
 
+  const recentreMe = () => {
+    if (!myPos || !mapRef.current) return;
+    mapRef.current.setView([myPos.lat, myPos.lon], Math.max(mapRef.current.getZoom(), 16));
+  };
+
   return (
     <div className="map-wrap">
+      <button
+        type="button"
+        className="map-me small"
+        aria-label="Centre on my position"
+        disabled={!myPos}
+        onClick={recentreMe}
+      >
+        📍 Me
+      </button>
       <MapContainer
         center={MAP_FALLBACK_CENTER}
         zoom={MAP_FALLBACK_ZOOM}
@@ -121,6 +177,8 @@ export default function MapView({ merchants, lastTouch, selectedIds, urgentById 
           url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
         />
         <FitToPins pins={pins} />
+        <CaptureMap mapRef={mapRef} />
+        <MyLocation pos={myPos} />
         {pins.map((p) =>
           p.urgent !== undefined ? (
             <Marker
