@@ -230,6 +230,14 @@ export interface FreeHubData {
   records: Map<string, CrmRecord>;
   /** Merchant id → unix time of its latest visit by any project member. */
   lastVisit: Map<string, number>;
+  /**
+   * Merchant id → unix time of the latest ACTIVITY of any kind (visit OR note) by any
+   * project member. Map-only bypass: a pre-wipe round logged visits as notes, and the
+   * wipe left many merchants without a visit event even though they were visited. The
+   * map colours by this so those merchants aren't shown as "never". The list keeps
+   * reading `lastVisit`.
+   */
+  lastTouch: Map<string, number>;
 }
 
 export type Resolution = { ok: true; data: FreeHubData } | { ok: false; reason: 'no-table' };
@@ -301,14 +309,18 @@ export function resolve(events: NostrEvent[], me: string): Resolution {
 
   const ids = new Set(merchants.map((m) => m.id));
   const lastVisit = new Map<string, number>();
+  const lastTouch = new Map<string, number>();
   for (const e of events) {
-    if (e.kind !== COMMENT_KIND || tagValue(e, 'activity') !== 'visit' || !authors.has(e.pubkey)) continue;
+    if (e.kind !== COMMENT_KIND || !authors.has(e.pubkey)) continue;
+    const activity = tagValue(e, 'activity');
+    if (activity !== 'visit' && activity !== 'note') continue;
     const [kind, , id] = (tagValue(e, 'A') ?? '').split(':');
     if (kind !== String(CRM_RECORD_KIND) || !ids.has(id)) continue;
-    lastVisit.set(id, Math.max(lastVisit.get(id) ?? 0, e.created_at));
+    if (activity === 'visit') lastVisit.set(id, Math.max(lastVisit.get(id) ?? 0, e.created_at));
+    lastTouch.set(id, Math.max(lastTouch.get(id) ?? 0, e.created_at));
   }
 
-  return { ok: true, data: { project, table, fields, merchants, records: new Map(records.map((r) => [r.id, r])), lastVisit } };
+  return { ok: true, data: { project, table, fields, merchants, records: new Map(records.map((r) => [r.id, r])), lastVisit, lastTouch } };
 }
 
 // ---------------------------------------------------------------- templates

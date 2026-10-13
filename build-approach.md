@@ -37,6 +37,12 @@ Each is a `[ ]` for Zapa to accept or redirect:
 
 (none right now; all current ones are in the spec's DECIDE-AT-BUILD / LATER, not here)
 
+## Changes after first install (2026-10-13)
+
+- **Map is read-only.** Removed the pin→VisitSheet path and the `onOpenMerchant` prop. All editing stays on the list.
+- **Colour by `lastTouch` (visit OR note), not `lastVisit`.** Bypass for the pre-wipe round that logged visits as notes and lost its visit events in the wipe. `FreeHubData` now carries both `lastVisit` (list, strict) and `lastTouch` (map, inclusive). Legend label changed to "no activity yet".
+- The list still reads `lastVisit` only — no change to list behaviour or legend.
+
 ## Done
 
 - `src/lib/heat.ts` added — shared pure helper for the HEAT band of a timestamp.

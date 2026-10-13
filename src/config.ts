@@ -33,10 +33,10 @@ export const HEAT = [
 ] as const;
 export const HEAT_NEVER = { color: '#ef5350', label: 'never' };
 
-// Map-only: a merchant with no visit yet pins gray (map legend labels it "no visit yet").
-// The list keeps HEAT_NEVER red — gray is a map-only concept, so a single untouched
-// business doesn't read as urgent next to actually-overdue ones.
-export const MAP_NO_VISIT = { color: '#9e9e9e', label: 'no visit yet' } as const;
+// Map-only: a merchant with no activity (visit OR note) yet pins gray. The list keeps
+// HEAT_NEVER red — gray is a map-only concept, so a single untouched business doesn't
+// read as urgent next to actually-overdue ones.
+export const MAP_NO_VISIT = { color: '#9e9e9e', label: 'no activity yet' } as const;
 
 // Fallback viewport when no merchant has a Location yet: central Funchal.
 export const MAP_FALLBACK_CENTER: [number, number] = [32.6471, -16.9080];

@@ -280,7 +280,7 @@ export default function Tracker({ pubkey, data, access, pending, loadedAt, onRef
         </button>
       </div>
       {state.view === 'map' ? (
-        <MapView merchants={merchants} lastVisit={lastVisit} onOpenMerchant={setOpen} />
+        <MapView merchants={merchants} lastTouch={data.lastTouch} />
       ) : (
         <>
       <div className="legend small">

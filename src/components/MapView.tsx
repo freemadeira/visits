@@ -1,7 +1,12 @@
-// Visitas heat map (v1, simplest). A merchant pins at its FreeHub Location, coloured by
-// the same HEAT bands the list column uses — green ≤7d, yellow ≤14d, orange ≤30d, red
-// after that; gray for merchants with no visit yet (map-only — the list keeps red). A tap
-// on a pin opens the same VisitSheet a row tap opens in the list.
+// Visitas heat map (v1, simplest). READ-ONLY: a merchant pins at its FreeHub Location,
+// coloured by the same HEAT bands the list column uses — green ≤7d, yellow ≤14d, orange
+// ≤30d, red after that; gray for merchants with no activity yet. All editing stays on the
+// list (tap a row there to check in).
+//
+// Colour is driven by `lastTouch` (newest visit OR note), not `lastVisit`. Reason: a
+// pre-wipe round logged visits as notes, and the wipe left many merchants without any
+// visit event even though they'd been visited. `lastTouch` picks up those notes so the
+// map shows them coloured rather than gray. The list keeps the stricter `lastVisit`.
 
 import { useEffect, useMemo } from 'react';
 import type { CircleMarkerOptions, LatLngBoundsExpression, LatLngTuple } from 'leaflet';
@@ -12,10 +17,8 @@ import { heat } from '../lib/heat.ts';
 
 interface Props {
   merchants: Merchant[];
-  /** Merchant id → unix seconds of its newest visit. */
-  lastVisit: Map<string, number>;
-  /** The merchant's position in the `merchants` array. Same contract Tracker uses. */
-  onOpenMerchant: (i: number) => void;
+  /** Merchant id → unix seconds of the newest activity on it (visit OR note). */
+  lastTouch: Map<string, number>;
 }
 
 interface Pin {
@@ -47,18 +50,18 @@ function FitToPins({ pins }: { pins: Pin[] }) {
   return null;
 }
 
-export default function MapView({ merchants, lastVisit, onOpenMerchant }: Props) {
+export default function MapView({ merchants, lastTouch }: Props) {
   const pins: Pin[] = useMemo(
     () =>
       merchants
         .map((m, i) => ({ i, m }))
         .filter(({ m }) => m.lat !== null && m.lon !== null)
         .map(({ i, m }) => {
-          const ts = lastVisit.get(m.id);
+          const ts = lastTouch.get(m.id);
           const band = ts ? heat(ts) : MAP_NO_VISIT;
           return { i, m, pos: [m.lat as number, m.lon as number] as LatLngTuple, color: band.color, label: band.label };
         }),
-    [merchants, lastVisit],
+    [merchants, lastTouch],
   );
 
   const mapped = pins.length;
@@ -89,7 +92,6 @@ export default function MapView({ merchants, lastVisit, onOpenMerchant }: Props)
             center={p.pos}
             radius={PIN_RADIUS}
             pathOptions={{ ...PIN_STYLE, fillColor: p.color }}
-            eventHandlers={{ click: () => onOpenMerchant(p.i) }}
           >
             <Tooltip direction="top" offset={[0, -4]} opacity={0.95}>
               {p.m.name} · {p.label}
