@@ -9,6 +9,7 @@ import {
   loadUnlisted,
   merchantFromTemplate,
   newMerchantTemplate,
+  planFieldNotesBackfill,
   recordChangeTemplate,
   unlistedMerchants,
   visitTemplate,
@@ -181,6 +182,33 @@ export default function Tracker({ pubkey, data, access, pending, loadedAt, onRef
     }
   }
 
+  const [backfilling, setBackfilling] = useState(false);
+  async function backfillNotes() {
+    const rows = planFieldNotesBackfill(data);
+    if (rows.length === 0) {
+      setBackupNote('Nothing to backfill: every dated Field Notes line already has a visit.');
+      return;
+    }
+    const merchantsTouched = new Set(rows.map((r) => r.merchant.id)).size;
+    if (!confirm(`Publish ${rows.length} visit events from ${merchantsTouched} merchants' Field Notes?\n\nIdempotent — safe to re-run if interrupted.`)) return;
+    setBackfilling(true);
+    let ok = 0;
+    let fail = 0;
+    try {
+      for (const row of rows) {
+        try {
+          await publish(row.template);
+          ok++;
+        } catch {
+          fail++;
+        }
+      }
+      setBackupNote(`Backfill: ${ok} queued, ${fail} failed. They'll flush when the relay accepts them.`);
+    } finally {
+      setBackfilling(false);
+    }
+  }
+
 
 
   return (
@@ -199,6 +227,9 @@ export default function Tracker({ pubkey, data, access, pending, loadedAt, onRef
           {loadedAt && access !== 'online' && ` · list from ${new Date(loadedAt).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' })}`}
         </span>
         <button className="small" onClick={backup}>💾 Backup</button>
+        <button className="small" disabled={backfilling} onClick={backfillNotes}>
+          {backfilling ? '…' : '📜 Backfill'}
+        </button>
         <button className="small" onClick={onRefresh}>Refresh</button>
       </div>
       {backupNote && (

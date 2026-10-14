@@ -205,15 +205,37 @@ export function merchantFields(table: Table): MerchantFields {
  */
 export function fieldNotesTouchedAt(value: string | undefined): number | null {
   if (!value) return null;
-  const dateRe = /^(?<y>\d{4})-(?<m>\d{2})-(?<d>\d{2})/;
   let best = 0;
-  for (const line of value.split(/\r?\n/)) {
-    const g = dateRe.exec(line.trim())?.groups;
-    if (!g) continue;
-    const t = Date.UTC(Number(g.y), Number(g.m) - 1, Number(g.d), 12) / 1000;
-    if (t > best) best = t;
+  for (const line of parseFieldNotesLines(value)) {
+    if (line.unix > best) best = line.unix;
   }
   return best || null;
+}
+
+export interface FieldNotesLine {
+  /** Unix seconds at noon on the date. */
+  unix: number;
+  /** The YYYY-MM-DD date, as it appeared. */
+  date: string;
+  /** Whatever came after the date and separator, trimmed. May be empty. */
+  content: string;
+}
+
+/** Parses `YYYY-MM-DD[: ...]` lines out of a Field Notes value. Order preserved. */
+export function parseFieldNotesLines(value: string | undefined): FieldNotesLine[] {
+  if (!value) return [];
+  const lineRe = /^(?<y>\d{4})-(?<m>\d{2})-(?<d>\d{2})(?:\s*[:\-–—]\s*(?<rest>.*))?$/;
+  const out: FieldNotesLine[] = [];
+  for (const raw of value.split(/\r?\n/)) {
+    const g = lineRe.exec(raw.trim())?.groups;
+    if (!g) continue;
+    out.push({
+      unix: Date.UTC(Number(g.y), Number(g.m) - 1, Number(g.d), 12) / 1000,
+      date: `${g.y}-${g.m}-${g.d}`,
+      content: (g.rest ?? '').trim(),
+    });
+  }
+  return out;
 }
 
 const optionLabel = (field: Field | undefined, id: string | undefined) =>
@@ -257,6 +279,9 @@ export interface FreeHubData {
   merchants: Merchant[];
   /** Merchant id → the full record, for republishing it whole. */
   records: Map<string, CrmRecord>;
+  /** Merchant id → set of YYYY-MM-DD on which a visit event already exists. Used by the
+   *  Field-Notes backfill to skip dates that are already covered. */
+  visitDates: Map<string, Set<string>>;
   /** Merchant id → unix time of its latest visit by any project member. */
   lastVisit: Map<string, number>;
   /**
@@ -343,13 +368,23 @@ export function resolve(events: NostrEvent[], me: string): Resolution {
   const ids = new Set(merchants.map((m) => m.id));
   const lastVisit = new Map<string, number>();
   const lastTouch = new Map<string, number>();
+  const visitDates = new Map<string, Set<string>>();
   for (const e of events) {
     if (e.kind !== COMMENT_KIND || !authors.has(e.pubkey)) continue;
     const activity = tagValue(e, 'activity');
     if (activity !== 'visit' && activity !== 'note') continue;
     const [kind, , id] = (tagValue(e, 'A') ?? '').split(':');
     if (kind !== String(CRM_RECORD_KIND) || !ids.has(id)) continue;
-    if (activity === 'visit') lastVisit.set(id, Math.max(lastVisit.get(id) ?? 0, e.created_at));
+    if (activity === 'visit') {
+      lastVisit.set(id, Math.max(lastVisit.get(id) ?? 0, e.created_at));
+      const date = localIsoDate(e.created_at);
+      let set = visitDates.get(id);
+      if (!set) {
+        set = new Set();
+        visitDates.set(id, set);
+      }
+      set.add(date);
+    }
     lastTouch.set(id, Math.max(lastTouch.get(id) ?? 0, e.created_at));
   }
   // Fold in Field Notes: a merchant with a dated note counts as touched on that date,
@@ -359,7 +394,7 @@ export function resolve(events: NostrEvent[], me: string): Resolution {
     if (ts !== null) lastTouch.set(m.id, Math.max(lastTouch.get(m.id) ?? 0, ts));
   }
 
-  return { ok: true, data: { project, table, fields, merchants, records: new Map(records.map((r) => [r.id, r])), lastVisit, lastTouch } };
+  return { ok: true, data: { project, table, fields, merchants, records: new Map(records.map((r) => [r.id, r])), visitDates, lastVisit, lastTouch } };
 }
 
 // ---------------------------------------------------------------- templates
@@ -384,6 +419,35 @@ export function visitTemplate(m: Merchant, note: string, createdAt = now()): Eve
       ['activity', 'visit'],
     ],
   };
+}
+
+export interface BackfillRow {
+  merchant: Merchant;
+  date: string;
+  template: EventTemplate;
+}
+
+/**
+ * Builds visit-event templates for every dated line in every merchant's Field Notes that
+ * doesn't already have a visit event on that date. Idempotent: dates already covered by
+ * `data.visitDates` are skipped, so re-running after a partial run finishes the job.
+ */
+export function planFieldNotesBackfill(data: FreeHubData): BackfillRow[] {
+  const rows: BackfillRow[] = [];
+  for (const m of data.merchants) {
+    if (m.unlisted) continue;
+    const lines = parseFieldNotesLines(m.fieldNotes);
+    const existing = data.visitDates.get(m.id) ?? new Set<string>();
+    for (const line of lines) {
+      if (existing.has(line.date)) continue;
+      rows.push({
+        merchant: m,
+        date: line.date,
+        template: visitTemplate(m, line.content || `(backfilled from Field Notes: ${line.date})`, line.unix),
+      });
+    }
+  }
+  return rows;
 }
 
 export interface NewMerchant {
