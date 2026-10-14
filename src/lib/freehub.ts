@@ -159,6 +159,8 @@ export interface Merchant {
   lat: number | null;
   lon: number | null;
   rank: number;
+  /** Raw Field Notes longtext value (empty string if blank). Shown read-only in VisitSheet. */
+  fieldNotes: string;
 }
 
 /** The Merchants table's fields the app reads/writes, found by name (ids are random per table). */
@@ -171,6 +173,14 @@ export interface MerchantFields {
   owner?: Field;
   acceptingSince?: Field;
   followUp?: Field;
+  /**
+   * A free-form notes field on the record itself (longtext). The 2026-10-08 relay restore
+   * dropped historical visit notes into this field prefixed with the visit date, e.g.
+   * "2026-10-06: Had a coffee paid in bitcoin\n2026-09-20: Checked in". Read-only in
+   * Visitas today; shown in VisitSheet so operators see earlier notes, and used by
+   * `lastTouch` so a merchant with a note counts as touched.
+   */
+  fieldNotes?: Field;
 }
 
 export function merchantFields(table: Table): MerchantFields {
@@ -184,7 +194,26 @@ export function merchantFields(table: Table): MerchantFields {
     owner: by('Owner', 'member'),
     acceptingSince: by('Accepting since', 'date'),
     followUp: by('Needs follow-up', 'checkbox'),
+    fieldNotes: by('Field Notes', 'longtext'),
   };
+}
+
+/**
+ * Pulls a touch-timestamp out of a Field Notes value. The restore wrote lines like
+ * `2026-10-06: Had a coffee paid in bitcoin`; the latest date among the lines wins.
+ * Returns null if the value is empty or has no parsable leading date on any line.
+ */
+export function fieldNotesTouchedAt(value: string | undefined): number | null {
+  if (!value) return null;
+  const dateRe = /^(?<y>\d{4})-(?<m>\d{2})-(?<d>\d{2})/;
+  let best = 0;
+  for (const line of value.split(/\r?\n/)) {
+    const g = dateRe.exec(line.trim())?.groups;
+    if (!g) continue;
+    const t = Date.UTC(Number(g.y), Number(g.m) - 1, Number(g.d), 12) / 1000;
+    if (t > best) best = t;
+  }
+  return best || null;
 }
 
 const optionLabel = (field: Field | undefined, id: string | undefined) =>
@@ -308,6 +337,7 @@ export function resolve(events: NostrEvent[], me: string): Resolution {
     lat: coords(r)?.lat ?? null,
     lon: coords(r)?.lon ?? null,
     rank: r.rank,
+    fieldNotes: r.values[fields.fieldNotes?.id ?? '']?.[0] ?? '',
   }));
 
   const ids = new Set(merchants.map((m) => m.id));
@@ -321,6 +351,12 @@ export function resolve(events: NostrEvent[], me: string): Resolution {
     if (kind !== String(CRM_RECORD_KIND) || !ids.has(id)) continue;
     if (activity === 'visit') lastVisit.set(id, Math.max(lastVisit.get(id) ?? 0, e.created_at));
     lastTouch.set(id, Math.max(lastTouch.get(id) ?? 0, e.created_at));
+  }
+  // Fold in Field Notes: a merchant with a dated note counts as touched on that date,
+  // picking up the 2026-10-06 round the relay restore folded into the record field.
+  for (const m of merchants) {
+    const ts = fieldNotesTouchedAt(m.fieldNotes);
+    if (ts !== null) lastTouch.set(m.id, Math.max(lastTouch.get(m.id) ?? 0, ts));
   }
 
   return { ok: true, data: { project, table, fields, merchants, records: new Map(records.map((r) => [r.id, r])), lastVisit, lastTouch } };
@@ -366,7 +402,7 @@ export const templateId = (t: EventTemplate) => t.tags.find((x) => x[0] === 'd')
 
 /** A merchant as it will exist once the new-record template is published. */
 export function merchantFromTemplate(t: EventTemplate, me: string, name: string): Merchant {
-  return { id: templateId(t), author: me, name, area: '', status: '', journeyId: '', needsFollowUp: false, closed: false, osm: '', lat: null, lon: null, rank: 0 };
+  return { id: templateId(t), author: me, name, area: '', status: '', journeyId: '', needsFollowUp: false, closed: false, osm: '', lat: null, lon: null, rank: 0, fieldNotes: '' };
 }
 
 /** FM24 businesses not in FreeHub, shown greyed in the app (names only, bundled file). */
@@ -385,7 +421,7 @@ export function unlistedMerchants(names: string[], inFreeHub: Merchant[]): Merch
   const known = new Set(inFreeHub.map((m) => norm(m.name)));
   return names
     .filter((n) => !known.has(norm(n)))
-    .map((name) => ({ id: `unlisted:${norm(name)}`, author: '', name, area: '', status: 'not in FreeHub', journeyId: '', needsFollowUp: false, closed: false, unlisted: true, osm: '', lat: null, lon: null, rank: 0 }));
+    .map((name) => ({ id: `unlisted:${norm(name)}`, author: '', name, area: '', status: 'not in FreeHub', journeyId: '', needsFollowUp: false, closed: false, unlisted: true, osm: '', lat: null, lon: null, rank: 0, fieldNotes: '' }));
 }
 
 /** FreeHub `recordTemplate`: tags in FreeHub's order, values in table field order. */

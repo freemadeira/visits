@@ -171,6 +171,13 @@ export default function VisitSheet({ merchant, lastVisit, onSave, onClose, canSa
           ⚠️ Needs follow-up
         </label>
 
+        {merchant.fieldNotes && (
+          <div className="prior-notes small muted" aria-label="Earlier notes">
+            <strong>Earlier notes</strong>
+            <pre>{merchant.fieldNotes}</pre>
+          </div>
+        )}
+
         <textarea
           className="note"
           placeholder="Notes — tap the keyboard mic to dictate"
