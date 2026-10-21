@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { dismissIosInstallHint, shouldShowIosInstallHint } from '../lib/installHint.ts';
 import {
   hasAndroidSigner,
   hasExtension,
@@ -20,6 +21,7 @@ export default function Login({ onSigner, error }: Props) {
   const [bunker, setBunker] = useState('');
   const [connectUri, setConnectUri] = useState('');
   const [androidSigner, setAndroidSigner] = useState(false);
+  const [showInstallHint, setShowInstallHint] = useState(shouldShowIosInstallHint);
   const abort = useRef<AbortController | null>(null);
 
   useEffect(() => () => abort.current?.abort(), []);
@@ -105,6 +107,22 @@ export default function Login({ onSigner, error }: Props) {
         </form>
 
         {err && <p className="error">{err}</p>}
+
+        {showInstallHint && (
+          <p className="hint">
+            Tip: tap <strong>Share</strong> →{' '}
+            <strong>Add to Home Screen</strong> to install Visitas on this iPhone.{' '}
+            <button
+              className="link"
+              onClick={() => {
+                dismissIosInstallHint();
+                setShowInstallHint(false);
+              }}
+            >
+              Dismiss
+            </button>
+          </p>
+        )}
       </div>
     </main>
   );

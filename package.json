@@ -9,6 +9,7 @@
     "lint": "oxlint",
     "preview": "vite preview --host",
     "apk": "node scripts/android.mjs",
+    "deploy": "node scripts/deploy.mjs",
     "sync": "node scripts/sync.mjs",
     "freehub-csv": "python3 scripts/freehub-csv.py"
   },
