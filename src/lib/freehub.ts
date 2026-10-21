@@ -510,35 +510,38 @@ function recordTags(table: Table, project: Project, r: Omit<CrmRecord, 'author' 
 }
 
 export type JourneyChoice =
+  // "lead" is the raw queue: any merchant someone put on the list, whatever the origin
+  // (bitcoiner tip, merchant reach-out, team target). Default stage for a new record.
+  // The cycling Onboarding Status button in VisitSheet walks: lead → contacted →
+  // accepting → notInterested → wraps. "closed" (Closed/relocated) is a separate button —
+  // marks the merchant as gone from the location; Visitas hides them from list/map, the
+  // record stays live in FreeHub so it can be flipped back when a new address turns up.
   | 'lead'
   | 'contacted'
-  | 'interested'
-  | 'onboarding'
   | 'accepting'
+  | 'notInterested'
   | 'closed';
-// Maps Visitas's internal journey ids to FreeHub Merchants-table stage labels. "closed"
-// is a Visitas-side concept the team repo doesn't carry yet — it currently writes
-// "Not interested" (the nearest existing dead-end stage) as a bridge until the
-// freemadeira/freehub Merchants table adds a real Closed stage (see
-// spec-freehub-merchants-closed-stage.md handed to the team). When Closed lands on the
-// Merchants table, swap this one label and the Tracker's `closed` detection follows.
+// Maps Visitas's internal ids to FreeHub Merchants-table stage labels. "closed" currently
+// writes "Not interested" too, as a bridge until the freemadeira/freehub Merchants table
+// adds a real Closed/relocated stage (see freehub-plans/spec-freehub-merchants-journey-stages.md).
+// Caveat: today both "notInterested" (the cycle option) and "closed" (the separate button)
+// write the same FreeHub label; a merchant tagged Closed via Visitas can't be told apart
+// from one tagged Not interested until FreeHub ships the Closed/relocated stage.
 const JOURNEY_LABEL: Record<JourneyChoice, string> = {
   lead: 'Lead',
   contacted: 'Contacted',
-  interested: 'Interested',
-  onboarding: 'Onboarding',
   accepting: 'Accepting bitcoin',
+  notInterested: 'Not interested',
   closed: 'Not interested',
 };
-// The ordered onboarding ladder for the "cycle with press" button in VisitSheet. Doesn't
-// include `accepting` (its own button) or `closed` (its own button).
-export const ONBOARDING_LADDER: JourneyChoice[] = ['lead', 'contacted', 'interested', 'onboarding'];
+// Ordered Onboarding Status for the "cycle with press" button in VisitSheet.
+// Closed/relocated is NOT in the cycle — it has its own button.
+export const ONBOARDING_LADDER: JourneyChoice[] = ['lead', 'contacted', 'accepting', 'notInterested'];
 export const JOURNEY_EMOJI: Record<JourneyChoice, string> = {
   lead: '🌱',
   contacted: '📞',
-  interested: '👀',
-  onboarding: '🛠️',
   accepting: '✅',
+  notInterested: '🚫',
   closed: '❌',
 };
 export const journeyLabel = (j: JourneyChoice): string => JOURNEY_LABEL[j];

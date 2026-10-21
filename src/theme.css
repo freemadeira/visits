@@ -50,7 +50,7 @@ input, textarea { background: var(--surface-2); border: 1px solid var(--rule); b
 .npub { word-break: break-all; background: var(--surface-2); padding: 0.5rem; border-radius: 6px; font-size: 0.8rem; }
 
 /* --- tracker --- */
-.tracker { padding: 12px 16px 96px; max-width: 1100px; margin: 0 auto; }
+.tracker { padding: calc(env(safe-area-inset-top, 0px) + 12px) 16px 96px; max-width: 1100px; margin: 0 auto; }
 .top { display: flex; justify-content: space-between; align-items: center; gap: 1rem; margin-bottom: 0.75rem; }
 .who { display: flex; align-items: center; gap: 0.5rem; }
 .controls { display: flex; flex-wrap: wrap; gap: 0.6rem 1rem; align-items: center; margin-bottom: 0.75rem; }
@@ -66,9 +66,18 @@ input, textarea { background: var(--surface-2); border: 1px solid var(--rule); b
 .prior-notes { border: 1px solid var(--rule); border-radius: 6px; padding: 0.4rem 0.6rem; margin: 0.5rem 0; background: var(--surface); }
 .prior-notes strong { display: block; margin-bottom: 0.2rem; }
 .prior-notes pre { margin: 0; white-space: pre-wrap; font: inherit; color: var(--muted); }
-.view-toggle { display: inline-flex; gap: 0; margin-bottom: 0.6rem; border: 1px solid var(--rule); border-radius: 999px; overflow: hidden; }
-.view-toggle button { background: transparent; color: var(--muted); border: 0; padding: 0.2rem 0.8rem; font: inherit; cursor: pointer; }
-.view-toggle button.active { background: var(--accent); color: var(--accent-ink); }
+/* Single flipping Map/List button */
+.view-flip { margin-bottom: 0.4rem; }
+/* Tight sync bar: dot + text + icon buttons */
+.sync.tight { padding: 0.25rem 0.5rem; margin-bottom: 0.4rem; }
+.sync.tight .dot-status { display: inline-flex; align-items: center; gap: 0.4rem; flex: 1; }
+.status-dot { display: inline-block; width: 0.6rem; height: 0.6rem; border-radius: 50%; }
+/* Icon-only buttons: minimal, same height everywhere */
+button.icon { background: transparent; color: inherit; border: 1px solid var(--rule); border-radius: 6px; padding: 0.15rem 0.4rem; font-size: 1rem; line-height: 1; cursor: pointer; }
+button.icon:disabled { opacity: 0.5; cursor: default; }
+/* Row actions: stacked 🧭 above Check in */
+.row-actions { display: flex; flex-direction: column; gap: 0.25rem; align-items: stretch; }
+.row-actions .nav-row { padding: 0.1rem 0.3rem; font-size: 0.9rem; border: none; }
 table { width: 100%; border-collapse: collapse; }
 th, td { padding: 0.4rem 0.5rem; text-align: left; border-bottom: 1px solid var(--rule); vertical-align: middle; }
 th { position: sticky; top: 0; background: var(--surface); z-index: 1; font-size: 0.85rem; white-space: nowrap; }

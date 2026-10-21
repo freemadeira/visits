@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState, type CSSProperties } from 'react';
 import { npubEncode } from 'nostr-tools/nip19';
 import type { EventTemplate, NostrEvent } from 'nostr-tools';
-import { HEAT, HEAT_NEVER, PALETTE, PALETTE_LABELS, TRIP_MAX, TRIP_MIN } from '../config.ts';
-import { navigateTo, nextStop, saveBackup } from '../lib/field.ts';
+import { HEAT, HEAT_NEVER, PALETTE, PALETTE_LABELS } from '../config.ts';
+import { navigateTo, saveBackup } from '../lib/field.ts';
 import {
   type Access,
   type FreeHubData,
@@ -48,7 +48,7 @@ function heat(ts: number | undefined) {
   return HEAT.find((h) => days <= h.maxDays) ?? HEAT_NEVER;
 }
 
-export default function Tracker({ pubkey, data, access, pending, loadedAt, onRefresh, publish, onLogout, suspect, onTrustRelay, backupJson }: Props) {
+export default function Tracker({ pubkey, data, access, pending, onRefresh, publish, onLogout, suspect, onTrustRelay, backupJson }: Props) {
   const { lastVisit } = data;
   const [showClosed, setShowClosed] = useState(false);
   // Closed places (they don't exist anymore) drop out of the list unless asked for.
@@ -151,14 +151,9 @@ export default function Tracker({ pubkey, data, access, pending, loadedAt, onRef
     setFilter('');
   }
 
-  async function goNext() {
+  async function navigate(m: typeof merchants[number]) {
     setMsg('');
-    const next = nextStop([...selected].map((i) => merchants[i]), (m) => {
-      const ts = lastVisit.get(m.id);
-      return !!ts && localDate(ts) === t;
-    });
-    if (!next) return setMsg('All picked businesses are visited today.');
-    await navigateTo(next).catch((e) => setMsg(String(e)));
+    await navigateTo(m).catch((e) => setMsg(String(e)));
   }
 
   const status =
@@ -221,16 +216,26 @@ export default function Tracker({ pubkey, data, access, pending, loadedAt, onRef
         </div>
       </header>
 
-      <div className={`sync ${pending || access !== 'online' ? 'pending' : ''}`}>
-        <span className="small">
-          {status}
-          {loadedAt && access !== 'online' && ` · list from ${new Date(loadedAt).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' })}`}
+      <div className={`sync tight ${pending || access !== 'online' ? 'pending' : ''}`}>
+        <span className="small dot-status" title={status}>
+          <span
+            className="status-dot"
+            style={{
+              background:
+                access === 'online' && !pending
+                  ? '#66bb6a'
+                  : access === 'online' || access === 'connecting'
+                  ? '#ffee58'
+                  : '#ef5350',
+            }}
+          />
+          {pending ? `${pending} pending` : access === 'online' ? 'synced' : access === 'connecting' ? '…' : access === 'denied' ? 'denied' : 'offline'}
         </span>
-        <button className="small" onClick={backup}>💾 Backup</button>
-        <button className="small" disabled={backfilling} onClick={backfillNotes}>
-          {backfilling ? '…' : '📜 Backfill'}
+        <button className="icon" aria-label="Backup" title="Backup" onClick={backup}>💾</button>
+        <button className="icon" aria-label="Backfill from Field Notes" title="Backfill from Field Notes" disabled={backfilling} onClick={backfillNotes}>
+          {backfilling ? '…' : '📜'}
         </button>
-        <button className="small" onClick={onRefresh}>Refresh</button>
+        <button className="icon" aria-label="Refresh" title="Refresh" onClick={onRefresh}>🔄</button>
       </div>
       {backupNote && (
         <p className="small muted" onClick={() => setBackupNote('')}>
@@ -287,28 +292,17 @@ export default function Tracker({ pubkey, data, access, pending, loadedAt, onRef
           </label>
         )}
         <span className="muted small">
-          {merchants.length} businesses · {urgentCount} urgent · {data.project.title}
+          {merchants.length} businesses · {urgentCount} urgent ·{' '}
+          <button
+            type="button"
+            className="view-flip icon"
+            aria-label={state.view === 'list' ? 'Switch to Map view' : 'Switch to List view'}
+            title={state.view === 'list' ? 'Switch to Map' : 'Switch to List'}
+            onClick={() => update((s) => ({ ...s, view: s.view === 'list' ? 'map' : 'list' }))}
+          >
+            {state.view === 'list' ? '🗺️' : '☰'}
+          </button>
         </span>
-      </div>
-      <div className="view-toggle small" role="tablist" aria-label="View">
-        <button
-          type="button"
-          role="tab"
-          aria-selected={state.view === 'list'}
-          className={state.view === 'list' ? 'active' : ''}
-          onClick={() => update((s) => ({ ...s, view: 'list' }))}
-        >
-          List
-        </button>
-        <button
-          type="button"
-          role="tab"
-          aria-selected={state.view === 'map'}
-          className={state.view === 'map' ? 'active' : ''}
-          onClick={() => update((s) => ({ ...s, view: 'map' }))}
-        >
-          Map
-        </button>
       </div>
       {state.view === 'map' ? (
         <MapView
@@ -394,13 +388,23 @@ export default function Tracker({ pubkey, data, access, pending, loadedAt, onRef
                     </button>
                   </td>
                   <td>
-                    <button
-                      className={`checkin ${visit === t ? 'done' : ''}`}
-                      onClick={() => setOpen(i)}
-                      title="Open the visit: saving it is the check-in"
-                    >
-                      {visit === t ? '✓ today' : 'Check in'}
-                    </button>
+                    <div className="row-actions">
+                      <button
+                        className="icon nav-row"
+                        aria-label={`Navigate to ${m.name}`}
+                        title="Navigate here"
+                        onClick={() => navigate(m)}
+                      >
+                        🧭
+                      </button>
+                      <button
+                        className={`checkin ${visit === t ? 'done' : ''}`}
+                        onClick={() => setOpen(i)}
+                        title="Open the visit: saving it is the check-in"
+                      >
+                        {visit === t ? '✓ today' : 'Check in'}
+                      </button>
+                    </div>
                   </td>
                 </tr>
               );
@@ -409,18 +413,6 @@ export default function Tracker({ pubkey, data, access, pending, loadedAt, onRef
         </table>
       </div>
 
-      <footer className="bar">
-        <span className={selected.size && (selected.size < TRIP_MIN || selected.size > TRIP_MAX) ? 'warn' : ''}>
-          {selected.size} selected
-          <span className="muted small"> (aim for {TRIP_MIN}–{TRIP_MAX})</span>
-        </span>
-        <button className="ghost small" disabled={!selected.size} onClick={() => setSelected(new Set())}>
-          Clear
-        </button>
-        <button className="primary" disabled={!selected.size} onClick={goNext}>
-          🧭 Navigate to next
-        </button>
-      </footer>
         </>
       )}
 

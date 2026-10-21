@@ -130,8 +130,8 @@ export default function VisitSheet({ merchant, lastVisit, onSave, onClose, canSa
             aria-pressed={onboardingSelected}
             onClick={() => {
               if (onboardingSelected) {
-                // Already selected an onboarding stage — one tap cycles to the next and
-                // keeps it selected, so it stays the committed journey.
+                // Already picked an onboarding status — one tap advances the cycle and
+                // keeps it committed, so the newly-shown stage is what will be written.
                 const next = (onboardingIdx + 1) % ONBOARDING_LADDER.length;
                 setOnboardingIdx(next);
                 setJourney(ONBOARDING_LADDER[next]);
@@ -150,13 +150,6 @@ export default function VisitSheet({ merchant, lastVisit, onSave, onClose, canSa
           >
             {JOURNEY_EMOJI[onboardingSelected ? (journey as JourneyChoice) : cycleJourney]}{' '}
             {journeyLabel(onboardingSelected ? (journey as JourneyChoice) : cycleJourney)}
-          </button>
-          <button
-            className={journey === 'accepting' ? 'on ok' : ''}
-            aria-pressed={journey === 'accepting'}
-            onClick={() => setJourney((j) => (j === 'accepting' ? undefined : 'accepting'))}
-          >
-            {JOURNEY_EMOJI.accepting} Accepting bitcoin
           </button>
           <button
             className={journey === 'closed' ? 'on bad' : ''}
