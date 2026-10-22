@@ -10,8 +10,12 @@ import {
   merchantFromTemplate,
   newMerchantTemplate,
   planFieldNotesBackfill,
+  needsTableUpgrade,
   recordChangeTemplate,
+  tableUpgradeTemplate,
+  withTable,
   unlistedMerchants,
+  VIEW_ONLY,
   visitTemplate,
 } from '../lib/freehub.ts';
 import { distanceKm, highlights } from '../lib/geo.ts';
@@ -29,6 +33,8 @@ interface Props {
   loadedAt?: number;
   onRefresh: () => void;
   publish: (t: EventTemplate) => Promise<NostrEvent>;
+  /** The data with the Merchants table re-read from the relay. */
+  freshData: () => Promise<FreeHubData>;
   /** The relay answered with far less than this phone has; the phone's copy is kept. */
   suspect: { fresh: number; cached: number } | null;
   onTrustRelay: () => void;
@@ -48,7 +54,11 @@ function heat(ts: number | undefined) {
   return HEAT.find((h) => days <= h.maxDays) ?? HEAT_NEVER;
 }
 
-export default function Tracker({ pubkey, data, access, pending, onRefresh, publish, onLogout, suspect, onTrustRelay, backupJson }: Props) {
+export default function Tracker({ pubkey, data, access, pending, onRefresh, publish, freshData, onLogout, suspect, onTrustRelay, backupJson }: Props) {
+  // A viewer in FreeHub reads everything here and saves nothing: FreeHub ignores what viewers publish.
+  const readOnly = !data.canWrite;
+  const write = (template: EventTemplate) =>
+    readOnly ? Promise.reject(new Error(VIEW_ONLY)) : publish(template);
   const { lastVisit } = data;
   const [showClosed, setShowClosed] = useState(false);
   // Closed places (they don't exist anymore) drop out of the list unless asked for.
@@ -192,7 +202,7 @@ export default function Tracker({ pubkey, data, access, pending, onRefresh, publ
     try {
       for (const row of rows) {
         try {
-          await publish(row.template);
+          await write(row.template);
           ok++;
         } catch {
           fail++;
@@ -232,11 +242,14 @@ export default function Tracker({ pubkey, data, access, pending, onRefresh, publ
           {pending ? `${pending} pending` : access === 'online' ? 'synced' : access === 'connecting' ? '…' : access === 'denied' ? 'denied' : 'offline'}
         </span>
         <button className="icon" aria-label="Backup" title="Backup" onClick={backup}>💾</button>
-        <button className="icon" aria-label="Backfill from Field Notes" title="Backfill from Field Notes" disabled={backfilling} onClick={backfillNotes}>
-          {backfilling ? '…' : '📜'}
-        </button>
+        {!readOnly && (
+          <button className="icon" aria-label="Backfill from Field Notes" title="Backfill from Field Notes" disabled={backfilling} onClick={backfillNotes}>
+            {backfilling ? '…' : '📜'}
+          </button>
+        )}
         <button className="icon" aria-label="Refresh" title="Refresh" onClick={onRefresh}>🔄</button>
       </div>
+      {readOnly && <p className="small muted">👁 {VIEW_ONLY}</p>}
       {backupNote && (
         <p className="small muted" onClick={() => setBackupNote('')}>
           {backupNote}
@@ -277,7 +290,7 @@ export default function Tracker({ pubkey, data, access, pending, onRefresh, publ
           km
         </label>
         <button className="small" onClick={followUps}>🔥 Follow-ups</button>
-        <button className="small" onClick={() => setAdding(true)}>+ Add merchant</button>
+        {!readOnly && <button className="small" onClick={() => setAdding(true)}>+ Add merchant</button>}
         {closedCount > 0 && (
           <label className="small muted">
             <input
@@ -422,27 +435,43 @@ export default function Tracker({ pubkey, data, access, pending, onRefresh, publ
           lastVisit={lastVisit.get(merchants[open].id)}
           onSave={async (note, change) => {
             const m = merchants[open];
+            let d = data;
+            if (needsTableUpgrade(d.fields, change)) {
+              // Closed, Relocated and New location are added to the table once, by the first phone that needs them,
+              // from a fresh copy so no one's edit in FreeHub is undone.
+              try {
+                d = await freshData();
+              } catch {
+                throw new Error("Go online once: FreeHub's Merchants table needs the Closed and Relocated stages, and this phone adds them.");
+              }
+              const upgrade = tableUpgradeTemplate(d.table, pubkey);
+              if (upgrade) {
+                await write(upgrade);
+                d = withTable(d, upgrade);
+              }
+            }
             if (m.unlisted) {
               // First check-in at an FM24 business: add it to FreeHub, with the choices made.
-              const create = newMerchantTemplate(data, pubkey, {
+              const create = newMerchantTemplate(d, pubkey, {
                 name: m.name,
                 lat: change.location?.lat ?? null,
                 lon: change.location?.lon ?? null,
                 journey: change.journey,
                 followUp: change.followUp,
               });
-              await publish(create);
-              await publish(visitTemplate(merchantFromTemplate(create, pubkey, m.name), note));
+              await write(create);
+              await write(visitTemplate(merchantFromTemplate(create, pubkey, m.name), note));
               setOpen(null);
               return;
             }
-            await publish(visitTemplate(m, note));
-            const update = recordChangeTemplate(data, pubkey, m, change);
-            if (update) await publish(update);
+            await write(visitTemplate(m, note));
+            const update = recordChangeTemplate(d, pubkey, m, change);
+            if (update) await write(update);
             setOpen(null);
           }}
           onClose={() => setOpen(null)}
           canSaveLocation={!!data.fields.location}
+          readOnly={readOnly}
         />
       )}
       {adding && (
@@ -450,7 +479,7 @@ export default function Tracker({ pubkey, data, access, pending, onRefresh, publ
           areas={data.fields.area?.options ?? []}
           existingNames={new Set(merchants.map((m) => m.name.toLowerCase()))}
           onAdd={async (m) => {
-            await publish(newMerchantTemplate(data, pubkey, m));
+            await write(newMerchantTemplate(data, pubkey, m));
             setAdding(false);
           }}
           onClose={() => setAdding(false)}

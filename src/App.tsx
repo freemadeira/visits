@@ -65,6 +65,7 @@ function Main({ signer, pubkey, onLogout }: { signer: Signer; pubkey: string; on
         loadedAt={hub.loadedAt}
         onRefresh={hub.refresh}
         publish={hub.publish}
+        freshData={hub.freshData}
         onLogout={onLogout}
         suspect={hub.suspect}
         onTrustRelay={hub.trustRelayData}
@@ -77,7 +78,7 @@ function Main({ signer, pubkey, onLogout }: { signer: Signer; pubkey: string; on
     hub.access === 'denied' ? (
       <>
         <h1>Not on the list</h1>
-        <p>The team relay doesn't let this npub in. Ask the admin to whitelist it:</p>
+        <p>The team relay doesn't let this npub in:</p>
         <code className="npub">{npubEncode(pubkey)}</code>
       </>
     ) : hub.access === 'connecting' ? (

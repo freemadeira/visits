@@ -5,6 +5,7 @@ import {
   ONBOARDING_LADDER,
   journeyLabel,
   validLocation,
+  VIEW_ONLY,
   type JourneyChoice,
   type Merchant,
   type RecordChange,
@@ -20,10 +21,12 @@ interface Props {
   onClose: () => void;
   /** The Merchants table has a Location field to keep a position in. */
   canSaveLocation: boolean;
+  /** This npub is a viewer in FreeHub: nothing can be saved. */
+  readOnly: boolean;
 }
 
 // Notes are FreeHub's: the sheet shows when the last visit was, not what it said.
-export default function VisitSheet({ merchant, lastVisit, onSave, onClose, canSaveLocation }: Props) {
+export default function VisitSheet({ merchant, lastVisit, onSave, onClose, canSaveLocation, readOnly }: Props) {
   const [note, setNote] = useState('');
   const [media, setMedia] = useState<string[]>([]);
   const [err, setErr] = useState('');
@@ -42,18 +45,25 @@ export default function VisitSheet({ merchant, lastVisit, onSave, onClose, canSa
   const missingLocation = canSaveLocation && (merchant.lat === null || merchant.lon === null);
   const [position, setPosition] = useState<{ lat: number; lon: number; accuracy?: number } | null>(null);
   const [positionErr, setPositionErr] = useState('');
+  // Where a Relocated business moved to: pinned now, or on a later visit to the new place.
+  const relocating = journey === 'relocated' || (journey === undefined && merchant.status === journeyLabel('relocated'));
+  const [newPosition, setNewPosition] = useState<{ lat: number; lon: number; accuracy?: number } | null>(null);
+  const [newPositionErr, setNewPositionErr] = useState('');
   const dirty =
-    note.trim() !== '' || media.length > 0 || !!journey || followUp !== merchant.needsFollowUp || !!position;
+    note.trim() !== '' || media.length > 0 || !!journey || followUp !== merchant.needsFollowUp || !!position || !!newPosition;
 
-  async function locate() {
-    setPositionErr('');
+  async function locate(
+    set: (p: { lat: number; lon: number; accuracy?: number }) => void,
+    setError: (message: string) => void,
+  ) {
+    setError('');
     setBusy(true);
     try {
       const p = await currentPosition();
-      if (validLocation(p.lat, p.lon)) setPosition(p);
-      else setPositionErr("Couldn't get a real position, try again outside.");
+      if (validLocation(p.lat, p.lon)) set(p);
+      else setError("Couldn't get a real position, try again outside.");
     } catch (e) {
-      setPositionErr(e instanceof Error ? e.message : String(e));
+      setError(e instanceof Error ? e.message : String(e));
     } finally {
       setBusy(false);
     }
@@ -76,7 +86,12 @@ export default function VisitSheet({ merchant, lastVisit, onSave, onClose, canSa
     setErr('');
     setBusy(true);
     try {
-      await onSave(note.trim(), { journey, followUp, location: position ? { lat: position.lat, lon: position.lon } : undefined });
+      await onSave(note.trim(), {
+        journey,
+        followUp,
+        location: position ? { lat: position.lat, lon: position.lon } : undefined,
+        newLocation: relocating && newPosition ? { lat: newPosition.lat, lon: newPosition.lon } : undefined,
+      });
     } catch (e) {
       setErr(e instanceof Error ? e.message : String(e));
       setBusy(false);
@@ -117,7 +132,7 @@ export default function VisitSheet({ merchant, lastVisit, onSave, onClose, canSa
             ) : (
               <>
                 <p className="muted small">📍 No location yet</p>
-                <button disabled={busy} onClick={locate}>📍 Use my position here</button>
+                <button disabled={busy} onClick={() => locate(setPosition, setPositionErr)}>📍 Use my position here</button>
               </>
             )}
             {positionErr && <p className="error">{positionErr}</p>}
@@ -154,11 +169,46 @@ export default function VisitSheet({ merchant, lastVisit, onSave, onClose, canSa
           <button
             className={journey === 'closed' ? 'on bad' : ''}
             aria-pressed={journey === 'closed'}
-            onClick={() => setJourney((j) => (j === 'closed' ? undefined : 'closed'))}
+            onClick={() => {
+              if (journey === 'closed') return setJourney(undefined);
+              if (
+                confirm(
+                  'This removes the business from the map.\n\nA closed business no longer exists: its OpenStreetMap and BTC Map listing is deleted.',
+                )
+              ) {
+                setJourney('closed');
+              }
+            }}
           >
-            {JOURNEY_EMOJI.closed} Closed/relocated
+            {JOURNEY_EMOJI.closed} Closed
+          </button>
+          <button
+            className={journey === 'relocated' ? 'on' : ''}
+            aria-pressed={journey === 'relocated'}
+            onClick={() => setJourney((j) => (j === 'relocated' ? undefined : 'relocated'))}
+          >
+            {JOURNEY_EMOJI.relocated} Relocated
           </button>
         </div>
+        {relocating && (
+          <div className="location">
+            {newPosition ? (
+              <p className="position">
+                <span>
+                  {JOURNEY_EMOJI.relocated} New location {newPosition.lat.toFixed(5)}, {newPosition.lon.toFixed(5)}
+                  {newPosition.accuracy !== undefined && ` (±${Math.round(newPosition.accuracy)} m)`}
+                </span>
+                <button className="ghost small" aria-label="Drop the new location" onClick={() => setNewPosition(null)}>✕</button>
+              </p>
+            ) : (
+              <>
+                <p className="muted small">{JOURNEY_EMOJI.relocated} Moved: pin the new location when you're there.</p>
+                <button disabled={busy} onClick={() => locate(setNewPosition, setNewPositionErr)}>📍 Pin new location here</button>
+              </>
+            )}
+            {newPositionErr && <p className="error">{newPositionErr}</p>}
+          </div>
+        )}
         <label className="followup">
           <input type="checkbox" checked={followUp} onChange={(e) => setFollowUp(e.target.checked)} />
           ⚠️ Needs follow-up
@@ -194,7 +244,8 @@ export default function VisitSheet({ merchant, lastVisit, onSave, onClose, canSa
         )}
         {err && <p className="error">{err}</p>}
 
-        <button className="primary" disabled={busy} onClick={save}>
+        {readOnly && <p className="small muted">👁 {VIEW_ONLY}</p>}
+        <button className="primary" disabled={busy || readOnly} onClick={save}>
           Check in &amp; save ({today()})
         </button>
       </div>

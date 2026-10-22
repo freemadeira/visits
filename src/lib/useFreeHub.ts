@@ -23,16 +23,22 @@ export function useFreeHub(signer: Signer, pubkey: string) {
   const relays = useRef<TeamRelays | null>(null);
   const loading = useRef(false);
 
-  const flush = useCallback(async () => {
-    const r = relays.current;
-    if (!r) return;
-    for (const e of outbox.list(pubkey)) {
-      if (await r.publish(e).catch(() => false)) {
+  // One flush at a time, oldest event first, stopping at the first one no relay takes: a later
+  // event can depend on an earlier one (a record on the table upgrade that adds its stage).
+  const flushing = useRef<Promise<void>>(Promise.resolve());
+  const flush = useCallback(() => {
+    const run = async () => {
+      const r = relays.current;
+      if (!r) return;
+      for (const e of outbox.list(pubkey)) {
+        if (!(await r.publish(e).catch(() => false))) break;
         outbox.remove(pubkey, e.id);
         setEvents((prev) => (prev.some((x) => x.id === e.id) ? prev : [...prev, e]));
       }
-    }
-    setPending(outbox.list(pubkey));
+      setPending(outbox.list(pubkey));
+    };
+    flushing.current = flushing.current.then(run, run);
+    return flushing.current;
   }, [pubkey]);
 
   const refresh = useCallback(async () => {
@@ -98,6 +104,18 @@ export function useFreeHub(signer: Signer, pubkey: string) {
     return resolve([...events, ...pending.filter((e) => !ids.has(e.id))], pubkey);
   }, [events, pending, pubkey]);
 
+  /** The data with projects and tables re-read from the relay: what a table upgrade must be built from. */
+  const freshData = useCallback(async () => {
+    const r = relays.current;
+    if (!r) throw new Error('Not connected to FreeHub.');
+    const head = await r.head();
+    const all = [...events, ...pending];
+    const known = new Set(all.map((e) => e.id));
+    const fresh = resolve([...all, ...head.filter((e) => !known.has(e.id))], pubkey);
+    if (!fresh.ok) throw new Error('The Merchants table is gone from FreeHub.');
+    return fresh.data;
+  }, [events, pending, pubkey]);
+
   /** The user checked the relay and wants its (smaller) data after all. */
   const trustRelayData = useCallback(() => {
     trustRelay.current = true;
@@ -119,6 +137,7 @@ export function useFreeHub(signer: Signer, pubkey: string) {
     loadedAt,
     refresh,
     publish,
+    freshData,
     hasData: events.length > 0,
     suspect,
     trustRelayData,

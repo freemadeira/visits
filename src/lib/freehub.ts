@@ -44,13 +44,28 @@ function latestVersions(events: NostrEvent[], kind: number, authors: Set<string>
 export interface Project {
   address: string;
   title: string;
+  /** Can write: their versions of tables and records count. */
   members: string[];
+  /** Read-only (FreeHub's `["p", pubkey, "", "viewer"]`): they see everything, and FreeHub ignores what they publish. */
+  viewers: string[];
 }
+
+const VIEWER = 'viewer';
+export const VIEW_ONLY = 'View only: this npub can read this project but not write to it.';
 
 function parseProject(e: NostrEvent): Project {
   const d = tagValue(e, 'd') ?? '';
-  const members = [e.pubkey, ...e.tags.filter((t) => t[0] === 'p' && isPubkey(t[1])).map((t) => t[1])];
-  return { address: `${PROJECT_KIND}:${e.pubkey}:${d}`, title: tagValue(e, 'title') ?? 'Untitled', members: [...new Set(members)] };
+  const members = new Set([e.pubkey]);
+  const viewers = new Set<string>();
+  for (const [name, pubkey, , role] of e.tags) {
+    if (name === 'p' && isPubkey(pubkey)) (role === VIEWER ? viewers : members).add(pubkey);
+  }
+  return {
+    address: `${PROJECT_KIND}:${e.pubkey}:${d}`,
+    title: tagValue(e, 'title') ?? 'Untitled',
+    members: [...members],
+    viewers: [...viewers].filter((v) => !members.has(v)),
+  };
 }
 
 export interface Option {
@@ -71,6 +86,8 @@ export interface Table {
   title: string;
   fields: Field[];
   updatedAt: number;
+  /** The version this was read from: an upgrade republishes its tags, adding only what's missing. */
+  event: NostrEvent;
 }
 
 function parseTable(e: NostrEvent): Table {
@@ -96,6 +113,7 @@ function parseTable(e: NostrEvent): Table {
     title: tagValue(e, 'title') ?? '',
     fields,
     updatedAt: e.created_at,
+    event: e,
   };
 }
 
@@ -151,7 +169,7 @@ export interface Merchant {
   journeyId: string;
   /** The "Needs follow-up" checkbox is ticked. */
   needsFollowUp: boolean;
-  /** Journey is "Closed": the place doesn't exist anymore (hidden by default). */
+  /** Journey is Closed (the business no longer exists) or Not interested: out of the day-to-day list (hidden by default). */
   closed: boolean;
   /** An FM24 business not in FreeHub yet (names only); checking in adds it. */
   unlisted?: boolean;
@@ -168,6 +186,8 @@ export interface MerchantFields {
   area?: Field;
   /** FreeHub's Location field (type `location`): the coordinates, and what its map pins. */
   location?: Field;
+  /** Where a Relocated business moved to, pinned in the field; FreeHub's BTC Map sync moves the OSM listing there. */
+  newLocation?: Field;
   osm?: Field;
   journey?: Field;
   owner?: Field;
@@ -188,7 +208,9 @@ export function merchantFields(table: Table): MerchantFields {
     table.fields.find((f) => norm(f.name) === norm(name) && (!type || f.type === type));
   return {
     area: by('Area'),
-    location: table.fields.find((f) => f.type === 'location'),
+    // By name first: "New location" is a location field too.
+    location: by('Location', 'location') ?? table.fields.find((f) => f.type === 'location' && norm(f.name) !== norm(NEW_LOCATION)),
+    newLocation: by(NEW_LOCATION, 'location'),
     osm: by('OSM link'),
     journey: table.fields.find((f) => f.type === 'stage'),
     owner: by('Owner', 'member'),
@@ -274,6 +296,8 @@ function writeLocation(fields: MerchantFields, values: Record<string, string[]>,
 
 export interface FreeHubData {
   project: Project;
+  /** This npub is a member of the project; a viewer only reads. */
+  canWrite: boolean;
   table: Table;
   fields: MerchantFields;
   merchants: Merchant[];
@@ -320,7 +344,7 @@ export function resolve(events: NostrEvent[], me: string): Resolution {
   };
   let best: { project: Project; table: Table; score: number } | null = null;
   for (const { p: project } of projects.values()) {
-    if (!project.members.includes(me)) continue;
+    if (!project.members.includes(me) && !project.viewers.includes(me)) continue;
     const authors = new Set(project.members);
     const tables = latestVersions(
       events.filter((e) => e.kind === CRM_TABLE_KIND && e.tags.some((t) => t[0] === 'a' && t[1] === project.address)),
@@ -354,10 +378,10 @@ export function resolve(events: NostrEvent[], me: string): Resolution {
     status: optionLabel(fields.journey, r.values[fields.journey?.id ?? '']?.[0]),
     journeyId: r.values[fields.journey?.id ?? '']?.[0] ?? '',
     needsFollowUp: r.values[fields.followUp?.id ?? '']?.[0] === 'true',
-    // "Closed" = whichever FreeHub stage Visitas treats as the closed dead-end
-    // (JOURNEY_LABEL.closed). Currently "Not interested" until the team repo ships a
-    // real Closed stage; swap in one place when it lands.
-    closed: norm(optionLabel(fields.journey, r.values[fields.journey?.id ?? '']?.[0])) === norm(JOURNEY_LABEL.closed),
+    // Both dead ends leave the day-to-day list: Closed and Not interested.
+    closed: [JOURNEY_LABEL.closed, JOURNEY_LABEL.notInterested].some(
+      (label) => norm(optionLabel(fields.journey, r.values[fields.journey?.id ?? '']?.[0])) === norm(label),
+    ),
     osm: r.values[fields.osm?.id ?? '']?.[0] ?? '',
     lat: coords(r)?.lat ?? null,
     lon: coords(r)?.lon ?? null,
@@ -394,7 +418,7 @@ export function resolve(events: NostrEvent[], me: string): Resolution {
     if (ts !== null) lastTouch.set(m.id, Math.max(lastTouch.get(m.id) ?? 0, ts));
   }
 
-  return { ok: true, data: { project, table, fields, merchants, records: new Map(records.map((r) => [r.id, r])), visitDates, lastVisit, lastTouch } };
+  return { ok: true, data: { project, canWrite: project.members.includes(me), table, fields, merchants, records: new Map(records.map((r) => [r.id, r])), visitDates, lastVisit, lastTouch } };
 }
 
 // ---------------------------------------------------------------- templates
@@ -513,29 +537,27 @@ export type JourneyChoice =
   // "lead" is the raw queue: any merchant someone put on the list, whatever the origin
   // (bitcoiner tip, merchant reach-out, team target). Default stage for a new record.
   // The cycling Onboarding Status button in VisitSheet walks: lead → contacted →
-  // accepting → notInterested → wraps. "closed" (Closed/relocated) is a separate button —
-  // marks the merchant as gone from the location; Visitas hides them from list/map, the
-  // record stays live in FreeHub so it can be flipped back when a new address turns up.
+  // accepting → notInterested → wraps. "closed" and "relocated" have their own buttons:
+  // Closed means the business no longer exists (hidden from list/map; FreeHub's BTC Map
+  // sync removes its OSM listing); Relocated means it moved, and stays visible so the new
+  // spot can be pinned (the sync then moves the OSM listing).
   | 'lead'
   | 'contacted'
   | 'accepting'
   | 'notInterested'
-  | 'closed';
-// Maps Visitas's internal ids to FreeHub Merchants-table stage labels. "closed" currently
-// writes "Not interested" too, as a bridge until the freemadeira/freehub Merchants table
-// adds a real Closed/relocated stage (see freehub-plans/spec-freehub-merchants-journey-stages.md).
-// Caveat: today both "notInterested" (the cycle option) and "closed" (the separate button)
-// write the same FreeHub label; a merchant tagged Closed via Visitas can't be told apart
-// from one tagged Not interested until FreeHub ships the Closed/relocated stage.
+  | 'closed'
+  | 'relocated';
+// Maps Visitas's internal ids to FreeHub Merchants-table stage labels.
 const JOURNEY_LABEL: Record<JourneyChoice, string> = {
   lead: 'Lead',
   contacted: 'Contacted',
   accepting: 'Accepting bitcoin',
   notInterested: 'Not interested',
-  closed: 'Not interested',
+  closed: 'Closed',
+  relocated: 'Relocated',
 };
 // Ordered Onboarding Status for the "cycle with press" button in VisitSheet.
-// Closed/relocated is NOT in the cycle — it has its own button.
+// Closed and Relocated are NOT in the cycle — they have their own buttons.
 export const ONBOARDING_LADDER: JourneyChoice[] = ['lead', 'contacted', 'accepting', 'notInterested'];
 export const JOURNEY_EMOJI: Record<JourneyChoice, string> = {
   lead: '🌱',
@@ -543,6 +565,7 @@ export const JOURNEY_EMOJI: Record<JourneyChoice, string> = {
   accepting: '✅',
   notInterested: '🚫',
   closed: '❌',
+  relocated: '🚚',
 };
 export const journeyLabel = (j: JourneyChoice): string => JOURNEY_LABEL[j];
 
@@ -552,6 +575,8 @@ export interface RecordChange {
   followUp?: boolean;
   /** A position for a merchant that has none (filled in during a visit). */
   location?: { lat: number; lon: number };
+  /** Where a Relocated business moved to. */
+  newLocation?: { lat: number; lon: number };
 }
 
 /**
@@ -590,8 +615,98 @@ export function recordChangeTemplate(data: FreeHubData, me: string, m: Merchant,
     }
   }
   if (change.location && writeLocation(fields, values, change.location.lat, change.location.lon)) changed = true;
+  if (change.newLocation && fields.newLocation) {
+    const p = validLocation(change.newLocation.lat, change.newLocation.lon);
+    const value = p && locationValue(p.lat, p.lon);
+    if (value && values[fields.newLocation.id]?.[0] !== value) {
+      values[fields.newLocation.id] = [value];
+      changed = true;
+    }
+  }
   if (!changed) return null;
   return { kind: CRM_RECORD_KIND, created_at: t, content: '', tags: recordTags(table, project, { ...record, values, moves }) };
+}
+
+// ---------------------------------------------------------------- table upgrade
+
+export const NEW_LOCATION = 'New location';
+
+/** What Visitas's Closed and Relocated buttons need on the Merchants table, as FreeHub's Merchants pack defines it. */
+const REQUIRED_STAGES: { choice: JourneyChoice; color: string; kind: string }[] = [
+  { choice: 'relocated', color: 'yellow', kind: 'open' },
+  { choice: 'closed', color: 'gray', kind: 'lost' },
+];
+
+/** FreeHub's short field/option id: 8 hex characters. */
+const shortId = () => [...crypto.getRandomValues(new Uint8Array(4))].map((b) => b.toString(16).padStart(2, '0')).join('');
+
+const hasStage = (fields: MerchantFields, choice: JourneyChoice) =>
+  !!fields.journey?.options.some((o) => norm(o.label) === norm(JOURNEY_LABEL[choice]));
+
+/** The change asks for a stage or field the table doesn't have yet. */
+export function needsTableUpgrade(fields: MerchantFields, change: RecordChange): boolean {
+  const stage = change.journey === 'closed' || change.journey === 'relocated' ? change.journey : undefined;
+  return (!!stage && !hasStage(fields, stage)) || (!!change.newLocation && !fields.newLocation);
+}
+
+/**
+ * The Merchants table republished with everything the buttons need that it lacks: the Closed and
+ * Relocated stages and the New location field. Every tag of the version it was read from is kept
+ * as it is; only `option` and `field` tags are added. Throws instead of returning a version that
+ * would lose or rename anything. Null when nothing is missing.
+ */
+export function tableUpgradeTemplate(table: Table, me: string): EventTemplate | null {
+  if (!table.event.tags.some((t) => t[0] === 'creator') && table.event.pubkey !== me) {
+    // Without a creator tag the table's address follows its author, so another member's version would move it.
+    throw new Error("FreeHub's Merchants table has no creator tag; add Closed and Relocated in FreeHub instead.");
+  }
+  const fields = merchantFields(table);
+  const tags = table.event.tags.map((t) => [...t]);
+  const lastIndex = (match: (t: string[]) => boolean) => {
+    for (let i = tags.length - 1; i >= 0; i--) if (match(tags[i])) return i;
+    return -1;
+  };
+  let added = 0;
+  const stage = fields.journey;
+  if (stage) {
+    const options = REQUIRED_STAGES.filter((s) => !hasStage(fields, s.choice)).map((s) => [
+      'option', stage.id, shortId(), JOURNEY_LABEL[s.choice], s.color, s.kind,
+    ]);
+    if (options.length) {
+      const last = lastIndex((t) => t[0] === 'option' && t[1] === stage.id);
+      tags.splice(last >= 0 ? last + 1 : tags.length, 0, ...options);
+      added += options.length;
+    }
+  }
+  if (!fields.newLocation) {
+    const last = lastIndex((t) => t[0] === 'field');
+    tags.splice(last >= 0 ? last + 1 : tags.length, 0, ['field', shortId(), 'location', NEW_LOCATION]);
+    added += 1;
+  }
+  if (added === 0) return null;
+
+  // Read the new version back: everything that was there must still be there, unchanged.
+  const after = parseTable({ ...table.event, tags });
+  for (const field of table.fields) {
+    const kept = after.fields.find((f) => f.id === field.id);
+    const same =
+      kept &&
+      kept.type === field.type &&
+      kept.name === field.name &&
+      field.options.every((o) => kept.options.some((k) => k.id === o.id && k.label === o.label));
+    if (!same) throw new Error(`Upgrading the Merchants table would change "${field.name}"; nothing was published.`);
+  }
+  const check = merchantFields(after);
+  if (!check.newLocation || !hasStage(check, 'closed') || !hasStage(check, 'relocated') || check.location?.id !== fields.location?.id) {
+    throw new Error('Upgrading the Merchants table did not come out as expected; nothing was published.');
+  }
+  return { kind: CRM_TABLE_KIND, created_at: Math.max(now(), table.updatedAt + 1), content: '', tags };
+}
+
+/** The data as it reads once the upgraded table is in. */
+export function withTable(data: FreeHubData, upgrade: EventTemplate): FreeHubData {
+  const table = parseTable({ ...data.table.event, created_at: upgrade.created_at, tags: upgrade.tags });
+  return { ...data, table, fields: merchantFields(table) };
 }
 
 const localIsoDate = (unix: number) => {
@@ -718,10 +833,33 @@ export class TeamRelays {
     throw lastError ?? new Error('No team relay reachable.');
   }
 
+  /** Projects and CRM tables, fresh from the first relay that answers: what a table upgrade is built from. */
+  async head(): Promise<NostrEvent[]> {
+    let lastError: unknown;
+    for (const relay of this.relays) {
+      if (this.denied.has(relay.url)) continue;
+      try {
+        return [
+          ...(await this.fetchAll(relay, { kinds: [PROJECT_KIND] })),
+          ...(await this.fetchAll(relay, { kinds: [CRM_TABLE_KIND] })),
+        ];
+      } catch (e) {
+        lastError = e;
+      }
+    }
+    throw lastError ?? new Error('No team relay reachable.');
+  }
+
   /** True once any team relay has the event. */
   async publish(event: NostrEvent): Promise<boolean> {
     const results = await Promise.allSettled(this.relays.map((r) => r.publish(event, { timeout: 15_000 })));
-    return results.some((r) => r.status === 'fulfilled' && ACCEPTED(r.value.ok, r.value.message));
+    const accepted = results.some((r) => r.status === 'fulfilled' && ACCEPTED(r.value.ok, r.value.message));
+    if (!accepted) {
+      // Kept in the outbox; say why, so a refusal can be read from the device log.
+      const why = results.map((r, i) => `${this.relays[i].url}: ${r.status === 'fulfilled' ? r.value.message || 'refused' : String(r.reason)}`);
+      console.warn(`Relay didn't take kind ${event.kind} (${event.id.slice(0, 8)}): ${why.join('; ')}`);
+    }
+    return accepted;
   }
 
   close() {
