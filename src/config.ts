@@ -9,7 +9,7 @@ export const MERCHANTS_SLUG = 'merchants';
 
 // NIP-46 relays for Amber / bunker traffic when not using Amber on the phone (NIP-55).
 // (Not relay.nsec.app: it needs NIP-42 auth and the connect sub silently gets nothing.)
-export const NIP46_RELAYS = ['wss://nos.lol', 'wss://nostr.mom', 'wss://relay.primal.net'];
+export const NIP46_RELAYS = ['wss://relay.snort.social', 'wss://relay.primal.net'];
 
 // Default "nearby" radius for urgent-flag highlighting and nearby-first ordering.
 export const DEFAULT_RADIUS_KM = 0.5;

@@ -35,7 +35,7 @@ const sk = nip19.decode(match[1]).data;
 console.log('publishing as', nip19.npubEncode(getPublicKey(sk)));
 
 // Must match .nsite/config.json's relays/servers.
-const relays = ['wss://nos.lol', 'wss://nostr.mom', 'wss://relay.primal.net'];
+const relays = ['wss://relay.snort.social', 'wss://relay.primal.net'];
 const servers = ['https://blossom.primal.net'];
 const now = Math.floor(Date.now() / 1000);
 
